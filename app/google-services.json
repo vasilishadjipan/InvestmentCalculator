@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "499780077732",
+    "project_id": "investment-calculator-99d0b",
+    "storage_bucket": "investment-calculator-99d0b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:499780077732:android:b66d65a96c1d50893d7e31",
+        "android_client_info": {
+          "package_name": "com.vasilis.investmentcalculator"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyANxoGP-H_7RCTXuri1WAcyIq2ToXZA24A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:499780077732:android:3b3a4e63aa3fc0f53d7e31",
+        "android_client_info": {
+          "package_name": "com.vasilis.investmentcalculator.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyANxoGP-H_7RCTXuri1WAcyIq2ToXZA24A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
