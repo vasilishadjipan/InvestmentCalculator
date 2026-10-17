@@ -19,3 +19,20 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# WorkManager and Room ProGuard Rules
+-keep class androidx.work.impl.WorkDatabase { *; }
+-keep class androidx.room.** { *; }
+-keep class androidx.work.Worker { *; }
+-keep class androidx.work.ListenableWorker { *; }
+-keep class androidx.work.impl.background.systemalarm.ConstraintProxy* { *; }
+-keep class androidx.work.impl.background.systemjob.SystemJobService { *; }
+-keep class androidx.work.impl.workers.ConstraintTrackingWorker { *; }
+-keep class androidx.work.impl.foreground.SystemForegroundService { *; }
+-keep public class * extends androidx.work.Worker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}
+-keep public class * extends androidx.work.ListenableWorker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod
