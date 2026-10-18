@@ -100,7 +100,6 @@ fun InvestmentCalculatorScreen(
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight. Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 4.dp)
                 )
 
                 // Editable Input Parameters

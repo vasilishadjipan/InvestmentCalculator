@@ -5,11 +5,11 @@ import kotlin.math.exp
 import kotlin.math.pow
 
 enum class CalculationMode(val title: String, val description: String) {
-    END_AMOUNT("End Amount", "Calculate final balance accumulated"),
-    STARTING_AMOUNT("Starting Amount", "Calculate initial deposit required"),
-    RETURN_RATE("Return Rate", "Calculate required annual return rate"),
-    INVEST_LENGTH("Invest Length", "Calculate investment duration in years"),
-    CONTRIBUTE_AMOUNT("Contribute Amount", "Calculate periodic deposit needed")
+    END_AMOUNT("End Amount", "Calculate final balance"),
+    STARTING_AMOUNT("Starting Amount", "Calculate initial deposit"),
+    RETURN_RATE("Return Rate", "Calculate required return rate"),
+    INVEST_LENGTH("Invest Length", "Calculate investment duration"),
+    CONTRIBUTE_AMOUNT("Contribute Amount", "Calculate periodic deposit")
 }
 
 enum class ContributionTiming(val title: String) {
