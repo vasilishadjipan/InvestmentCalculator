@@ -47,3 +47,8 @@ A modern, feature-rich Android financial calculator app built with **Jetpack Com
 - **Build System**: Gradle with Version Catalogs (`libs.versions.toml`)
 
 ---
+
+## 🔒 Privacy Policy
+Read the full app [Privacy Policy](PRIVACY_POLICY.md).
+
+---
