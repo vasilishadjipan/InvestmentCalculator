@@ -24,6 +24,7 @@ import com.vasilis.investmentcalculator.ui.theme.InterestColor
 import com.vasilis.investmentcalculator.ui.theme.PrincipalColor
 import java.text.NumberFormat
 import androidx.compose.ui.platform.LocalLocale
+import com.vasilis.investmentcalculator.ui.theme.AccentGold
 
 @Composable
 fun ResultSummaryCard(
@@ -112,7 +113,7 @@ fun ResultSummaryCard(
                 SummaryRow(
                     label = "End Balance",
                     value = currencyFormat.format(result.endBalance),
-                    color = MaterialTheme.colorScheme.primary
+                    color = AccentGold
                 )
 
                 SummaryRow(
