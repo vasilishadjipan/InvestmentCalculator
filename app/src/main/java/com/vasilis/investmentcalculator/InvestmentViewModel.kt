@@ -1,6 +1,12 @@
 package com.vasilis.investmentcalculator
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,169 +29,116 @@ data class InvestmentUiState(
     val inputState: InvestmentInputState = InvestmentInputState(),
     val result: InvestmentResult = InvestmentCalculator.calculate(InvestmentInput()),
     val isFormValid: Boolean = true,
-    val hasCalculated: Boolean = false
+    val hasCalculated: Boolean = false,
+    val isCalculating: Boolean = false,
+    val calculationError: String? = null,
+    val calculationId: Int = 0
 )
 
+/** A comma is accepted as a decimal separator; grouping separators are not accepted. */
+object InvestmentInputValidation {
+    fun parse(text: String): Double? = text.trim().replace(',', '.').toDoubleOrNull()
+        ?.takeIf { it.isFinite() }
+
+    fun error(text: String, min: Double = 0.0,
+              max: Double = InvestmentCalculator.MAX_AMOUNT): String? {
+        if (text.isBlank()) return "Field cannot be empty"
+        val value = parse(text) ?: return "Enter a valid number (for example 7.5 or 7,5)"
+        return if (value !in min..max) "Enter a value between $min and $max" else null
+    }
+
+    fun isValid(mode: CalculationMode, state: InvestmentInputState): Boolean =
+        (mode == CalculationMode.END_AMOUNT || error(state.targetEndAmountStr) == null) &&
+                (mode == CalculationMode.STARTING_AMOUNT || error(state.startingAmountStr) == null) &&
+                (mode == CalculationMode.INVEST_LENGTH || error(state.investLengthStr,
+                    max = InvestmentCalculator.MAX_YEARS) == null) &&
+                (mode == CalculationMode.RETURN_RATE || error(state.returnRateStr,
+                    InvestmentCalculator.MIN_RETURN, InvestmentCalculator.MAX_RETURN) == null) &&
+                (mode == CalculationMode.CONTRIBUTE_AMOUNT || error(state.additionalContributionStr) == null)
+}
+
 class InvestmentViewModel : ViewModel() {
-
-    private var currentLocale: Locale = Locale.getDefault()
-
+    private var currentLocale = Locale.getDefault()
+    private var calculationJob: Job? = null
+    private var revision = 0
     private val _uiState = MutableStateFlow(InvestmentUiState())
     val uiState: StateFlow<InvestmentUiState> = _uiState.asStateFlow()
 
-    fun updateLocale(locale: Locale) {
-        if (currentLocale != locale) {
-            currentLocale = locale
-            _uiState.update { currentState ->
-                currentState.copy(
-                    result = InvestmentCalculator.calculate(currentState.input, locale)
-                )
-            }
+    fun updateLocale(locale: Locale) { currentLocale = locale }
+
+    private fun edit(transform: (InvestmentUiState) -> InvestmentUiState) {
+        calculationJob?.cancel()
+        revision++
+        _uiState.update { old ->
+            val next = transform(old)
+            next.copy(hasCalculated = false, isCalculating = false, calculationError = null,
+                isFormValid = InvestmentInputValidation.isValid(next.input.mode, next.inputState))
         }
     }
 
     fun updateMode(mode: CalculationMode) {
-        _uiState.update { currentState ->
-            val newInput = currentState.input.copy(mode = mode)
-            currentState.copy(
-                input = newInput,
-                isFormValid = validateForm(mode, currentState.inputState),
-                hasCalculated = false
-            )
-        }
+        if (mode == _uiState.value.input.mode) return
+        edit { it.copy(input = it.input.copy(mode = mode)) }
     }
-
-    fun updateTargetEndAmount(text: String) {
-        _uiState.update { currentState ->
-            val newTextState = currentState.inputState.copy(targetEndAmountStr = text)
-            val parsed = text.toDoubleOrNull()
-            val newInput = if (parsed != null) currentState.input.copy(targetEndAmount = parsed) else currentState.input
-            currentState.copy(
-                inputState = newTextState,
-                input = newInput,
-                isFormValid = validateForm(currentState.input.mode, newTextState),
-                hasCalculated = false
-            )
-        }
+    fun updateTargetEndAmount(text: String) = edit {
+        it.copy(inputState = it.inputState.copy(targetEndAmountStr = text),
+            input = it.input.copy(targetEndAmount = InvestmentInputValidation.parse(text) ?: 0.0))
     }
-
-    fun updateStartingAmount(text: String) {
-        _uiState.update { currentState ->
-            val newTextState = currentState.inputState.copy(startingAmountStr = text)
-            val parsed = text.toDoubleOrNull()
-            val newInput = if (parsed != null) currentState.input.copy(startingAmount = parsed) else currentState.input
-            currentState.copy(
-                inputState = newTextState,
-                input = newInput,
-                isFormValid = validateForm(currentState.input.mode, newTextState),
-                hasCalculated = false
-            )
-        }
+    fun updateStartingAmount(text: String) = edit {
+        it.copy(inputState = it.inputState.copy(startingAmountStr = text),
+            input = it.input.copy(startingAmount = InvestmentInputValidation.parse(text) ?: 0.0))
     }
-
-    fun updateInvestLengthYears(text: String) {
-        _uiState.update { currentState ->
-            val newTextState = currentState.inputState.copy(investLengthStr = text)
-            val parsed = text.toDoubleOrNull()
-            val newInput = if (parsed != null) currentState.input.copy(investLengthYears = parsed) else currentState.input
-            currentState.copy(
-                inputState = newTextState,
-                input = newInput,
-                isFormValid = validateForm(currentState.input.mode, newTextState),
-                hasCalculated = false
-            )
-        }
+    fun updateInvestLengthYears(text: String) = edit {
+        it.copy(inputState = it.inputState.copy(investLengthStr = text),
+            input = it.input.copy(investLengthYears = InvestmentInputValidation.parse(text) ?: 0.0))
     }
-
-    fun updateReturnRatePercent(text: String) {
-        _uiState.update { currentState ->
-            val newTextState = currentState.inputState.copy(returnRateStr = text)
-            val parsed = text.toDoubleOrNull()
-            val newInput = if (parsed != null) currentState.input.copy(returnRatePercent = parsed) else currentState.input
-            currentState.copy(
-                inputState = newTextState,
-                input = newInput,
-                isFormValid = validateForm(currentState.input.mode, newTextState),
-                hasCalculated = false
-            )
-        }
+    fun updateReturnRatePercent(text: String) = edit {
+        it.copy(inputState = it.inputState.copy(returnRateStr = text),
+            input = it.input.copy(returnRatePercent = InvestmentInputValidation.parse(text) ?: 0.0))
     }
-
-    fun updateAdditionalContribution(text: String) {
-        _uiState.update { currentState ->
-            val newTextState = currentState.inputState.copy(additionalContributionStr = text)
-            val parsed = text.toDoubleOrNull()
-            val newInput = if (parsed != null) currentState.input.copy(additionalContribution = parsed) else currentState.input
-            currentState.copy(
-                inputState = newTextState,
-                input = newInput,
-                isFormValid = validateForm(currentState.input.mode, newTextState),
-                hasCalculated = false
-            )
-        }
+    fun updateAdditionalContribution(text: String) = edit {
+        it.copy(inputState = it.inputState.copy(additionalContributionStr = text),
+            input = it.input.copy(additionalContribution = InvestmentInputValidation.parse(text) ?: 0.0))
     }
-
-    fun updateContributionFrequency(frequency: ContributionFrequency) {
-        _uiState.update { currentState ->
-            val newInput = currentState.input.copy(contributionFrequency = frequency)
-            currentState.copy(input = newInput, hasCalculated = false)
-        }
+    fun updateContributionFrequency(value: ContributionFrequency) = edit {
+        it.copy(input = it.input.copy(contributionFrequency = value))
     }
-
-    fun updateContributionTiming(timing: ContributionTiming) {
-        _uiState.update { currentState ->
-            val newInput = currentState.input.copy(contributionTiming = timing)
-            currentState.copy(input = newInput, hasCalculated = false)
-        }
+    fun updateContributionTiming(value: ContributionTiming) = edit {
+        it.copy(input = it.input.copy(contributionTiming = value))
     }
-
-    fun updateCompoundFrequency(frequency: CompoundFrequency) {
-        _uiState.update { currentState ->
-            val newInput = currentState.input.copy(compoundFrequency = frequency)
-            currentState.copy(input = newInput, hasCalculated = false)
-        }
+    fun updateCompoundFrequency(value: CompoundFrequency) = edit {
+        it.copy(input = it.input.copy(compoundFrequency = value))
     }
 
     fun calculateResult() {
-        _uiState.update { currentState ->
-            if (currentState.isFormValid) {
-                AnalyticsHelper.logCalculateClicked(currentState.input.mode.title)
-                currentState.copy(
-                    result = InvestmentCalculator.calculate(currentState.input, currentLocale),
-                    hasCalculated = true
-                )
-            } else {
-                currentState
+        val state = _uiState.value
+        if (!state.isFormValid || state.isCalculating) return
+        val requestedRevision = revision
+        val locale = currentLocale
+        AnalyticsHelper.logCalculateClicked(state.input.mode.title)
+        _uiState.update { it.copy(isCalculating = true, calculationError = null, hasCalculated = false) }
+        calculationJob = viewModelScope.launch {
+            try {
+                val result = withContext(Dispatchers.Default) {
+                    InvestmentCalculator.calculate(state.input, locale)
+                }
+                if (requestedRevision == revision) _uiState.update {
+                    it.copy(result = result, hasCalculated = true, isCalculating = false,
+                        calculationId = it.calculationId + 1)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: IllegalArgumentException) {
+                if (requestedRevision == revision) _uiState.update {
+                    it.copy(isCalculating = false, calculationError = error.message ?: "Unable to calculate.")
+                }
             }
         }
     }
 
     fun resetToDefaults() {
         AnalyticsHelper.logResetClicked()
-        val defaultInput = InvestmentInput(mode = _uiState.value.input.mode)
-        val defaultState = InvestmentInputState(
-            targetEndAmountStr = defaultInput.targetEndAmount.formatNoDecimal(),
-            startingAmountStr = defaultInput.startingAmount.formatNoDecimal(),
-            investLengthStr = defaultInput.investLengthYears.formatNoDecimal(),
-            returnRateStr = defaultInput.returnRatePercent.formatNoDecimal(),
-            additionalContributionStr = defaultInput.additionalContribution.formatNoDecimal()
-        )
-        val defaultResult = InvestmentCalculator.calculate(defaultInput, currentLocale)
-        _uiState.value = InvestmentUiState(
-            input = defaultInput,
-            inputState = defaultState,
-            result = defaultResult,
-            isFormValid = true,
-            hasCalculated = false
-        )
-    }
-
-    private fun validateForm(mode: CalculationMode, state: InvestmentInputState): Boolean {
-        val targetValid = mode == CalculationMode.END_AMOUNT || state.targetEndAmountStr.toDoubleOrNull() != null
-        val startingValid = mode == CalculationMode.STARTING_AMOUNT || state.startingAmountStr.toDoubleOrNull() != null
-        val lengthValid = mode == CalculationMode.INVEST_LENGTH || state.investLengthStr.toDoubleOrNull() != null
-        val rateValid = mode == CalculationMode.RETURN_RATE || state.returnRateStr.toDoubleOrNull() != null
-        val contribValid = mode == CalculationMode.CONTRIBUTE_AMOUNT || state.additionalContributionStr.toDoubleOrNull() != null
-        return targetValid && startingValid && lengthValid && rateValid && contribValid
+        edit { InvestmentUiState(input = InvestmentInput(mode = it.input.mode),
+            calculationId = it.calculationId) }
     }
 }
