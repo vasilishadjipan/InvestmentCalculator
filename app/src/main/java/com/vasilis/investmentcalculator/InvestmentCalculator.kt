@@ -3,6 +3,9 @@ package com.vasilis.investmentcalculator
 import java.util.Locale
 import kotlin.math.exp
 import kotlin.math.pow
+import kotlin.math.ln
+import kotlin.math.floor
+import kotlin.math.abs
 
 enum class CalculationMode(val title: String, val description: String) {
     END_AMOUNT("End Amount", "Calculate final balance"),
@@ -65,145 +68,115 @@ data class InvestmentResult(
     val investLengthYears: Double,
     val returnRatePercent: Double,
     val additionalContribution: Double,
-    val schedule: List<AnnualScheduleItem>
+    val schedule: List<AnnualScheduleItem>,
+    val contributionFrequency: ContributionFrequency = ContributionFrequency.MONTHLY
 )
 
 object InvestmentCalculator {
+    const val MAX_YEARS = 100.0
+    const val MAX_AMOUNT = 1_000_000_000_000.0
+    const val MIN_RETURN = -90.0
+    const val MAX_RETURN = 500.0
 
-    fun getCurrencySymbol(locale: Locale = Locale.getDefault()): String {
-        return try {
-            java.util.Currency.getInstance(locale).symbol
-        } catch (e: Exception) {
-            "$"
-        }
-    }
+    fun getCurrencySymbol(locale: Locale = Locale.getDefault()): String =
+        try { java.util.Currency.getInstance(locale).symbol } catch (_: Exception) { "$" }
 
     fun calculate(input: InvestmentInput, locale: Locale = Locale.getDefault()): InvestmentResult {
-        return when (input.mode) {
-            CalculationMode.END_AMOUNT -> calculateEndAmount(input, locale)
-            CalculationMode.STARTING_AMOUNT -> calculateStartingAmount(input, locale)
-            CalculationMode.CONTRIBUTE_AMOUNT -> calculateContributeAmount(input, locale)
-            CalculationMode.RETURN_RATE -> calculateReturnRate(input)
-            CalculationMode.INVEST_LENGTH -> calculateInvestLength(input)
+        validate(input)
+        var resolved = input
+        val solved: Double
+        val label: String
+        val unit: String
+        when (input.mode) {
+            CalculationMode.END_AMOUNT -> {
+                solved = simulate(input).endBalance
+                label = "End Balance"
+                unit = getCurrencySymbol(locale)
+            }
+            CalculationMode.STARTING_AMOUNT -> {
+                // Compute the principal factor independently to avoid subtractive cancellation.
+                val deposits = simulate(input.copy(startingAmount = 0.0)).endBalance
+                val factor = simulate(input.copy(startingAmount = 1.0,
+                    additionalContribution = 0.0)).endBalance
+                require(factor > 0.0) { "Cannot solve the starting amount for these inputs." }
+                solved = ((input.targetEndAmount - deposits) / factor).coerceAtLeast(0.0)
+                checkSolvedAmount(solved)
+                resolved = input.copy(startingAmount = solved)
+                label = "Starting Amount Required"
+                unit = getCurrencySymbol(locale)
+            }
+            CalculationMode.CONTRIBUTE_AMOUNT -> {
+                val principal = simulate(input.copy(additionalContribution = 0.0)).endBalance
+                val factor = simulate(input.copy(startingAmount = 0.0,
+                    additionalContribution = 1.0)).endBalance
+                solved = if (principal >= input.targetEndAmount) 0.0 else {
+                    require(factor > 0.0) {
+                        "No contribution occurs within this duration. Increase the duration or change contribution timing."
+                    }
+                    (input.targetEndAmount - principal) / factor
+                }
+                checkSolvedAmount(solved)
+                resolved = input.copy(additionalContribution = solved)
+                label = if (input.contributionFrequency == ContributionFrequency.MONTHLY)
+                    "Required Monthly Contribution" else "Required Annual Contribution"
+                unit = getCurrencySymbol(locale)
+            }
+            CalculationMode.RETURN_RATE -> {
+                solved = solveRate(input)
+                resolved = input.copy(returnRatePercent = solved)
+                label = "Return Rate Required"
+                unit = "%"
+            }
+            CalculationMode.INVEST_LENGTH -> {
+                solved = solveDuration(input)
+                resolved = input.copy(investLengthYears = solved)
+                label = "Investment Duration Required"
+                unit = "Years"
+            }
+        }
+        val sim = simulate(resolved)
+        require(sim.endBalance <= 1e18 && sim.totalContributions <= 1e18 &&
+                abs(sim.totalInterest) <= 1e18) {
+            "The result is too large to display. Reduce the rate, duration or amounts."
+        }
+        return InvestmentResult(input.mode, solved, label, unit, sim.endBalance,
+            resolved.startingAmount, sim.totalContributions, sim.totalInterest,
+            resolved.investLengthYears, resolved.returnRatePercent,
+            resolved.additionalContribution, sim.schedule, input.contributionFrequency)
+    }
+
+    private fun checkSolvedAmount(value: Double) {
+        require(value.isFinite() && value in 0.0..MAX_AMOUNT) {
+            "The required amount exceeds the supported limit. Adjust the target or duration."
         }
     }
 
-    private fun getPeriodicRate(returnRatePercent: Double, contributionFreq: ContributionFrequency, compoundFreq: CompoundFrequency): Double {
-        val r = returnRatePercent / 100.0
-        val nc = contributionFreq.periodsPerYear.toDouble()
+    private fun validate(input: InvestmentInput) {
+        if (input.mode != CalculationMode.END_AMOUNT)
+            require(input.targetEndAmount.isFinite() && input.targetEndAmount in 0.0..MAX_AMOUNT) {
+                "Target amount must be between 0 and $MAX_AMOUNT."
+            }
+        if (input.mode != CalculationMode.STARTING_AMOUNT) checkSolvedAmount(input.startingAmount)
+        if (input.mode != CalculationMode.CONTRIBUTE_AMOUNT) checkSolvedAmount(input.additionalContribution)
+        if (input.mode != CalculationMode.INVEST_LENGTH)
+            require(input.investLengthYears.isFinite() && input.investLengthYears in 0.0..MAX_YEARS) {
+                "Duration must be between 0 and $MAX_YEARS years."
+            }
+        if (input.mode != CalculationMode.RETURN_RATE)
+            require(input.returnRatePercent.isFinite() && input.returnRatePercent in MIN_RETURN..MAX_RETURN) {
+                "Annual return must be between $MIN_RETURN% and $MAX_RETURN%."
+            }
+    }
 
-        return if (compoundFreq == CompoundFrequency.CONTINUOUSLY) {
+    private fun periodicRate(input: InvestmentInput): Double {
+        val r = input.returnRatePercent / 100.0
+        val nc = input.contributionFrequency.periodsPerYear.toDouble()
+        return if (input.compoundFrequency == CompoundFrequency.CONTINUOUSLY) {
             exp(r / nc) - 1.0
         } else {
-            val nk = compoundFreq.periodsPerYear.toDouble()
+            val nk = input.compoundFrequency.periodsPerYear.toDouble()
             (1.0 + r / nk).pow(nk / nc) - 1.0
         }
-    }
-
-    private fun simulate(
-        startingAmount: Double,
-        investLengthYears: Double,
-        returnRatePercent: Double,
-        additionalContribution: Double,
-        contributionFreq: ContributionFrequency,
-        contributionTiming: ContributionTiming,
-        compoundFreq: CompoundFrequency
-    ): SimulationResult {
-        val ip = getPeriodicRate(returnRatePercent, contributionFreq, compoundFreq)
-        val nc = contributionFreq.periodsPerYear
-        val fullYears = investLengthYears.toInt().coerceAtLeast(0)
-        val remainingFraction = investLengthYears - fullYears
-
-        var currentBalance = startingAmount.coerceAtLeast(0.0)
-        var totalContributions = 0.0
-        var totalInterest = 0.0
-
-        val schedule = mutableListOf<AnnualScheduleItem>()
-
-        for (year in 1..fullYears) {
-            val yearStartBalance = currentBalance
-            var yearContrib = 0.0
-            var yearInterest = 0.0
-
-            for (period in 1..nc) {
-                if (contributionTiming == ContributionTiming.BEGINNING) {
-                    currentBalance += additionalContribution
-                    totalContributions += additionalContribution
-                    yearContrib += additionalContribution
-                }
-
-                val periodInterest = currentBalance * ip
-                currentBalance += periodInterest
-                totalInterest += periodInterest
-                yearInterest += periodInterest
-
-                if (contributionTiming == ContributionTiming.END) {
-                    currentBalance += additionalContribution
-                    totalContributions += additionalContribution
-                    yearContrib += additionalContribution
-                }
-            }
-
-            schedule.add(
-                AnnualScheduleItem(
-                    year = year,
-                    startingBalance = yearStartBalance,
-                    annualContribution = yearContrib,
-                    annualInterest = yearInterest,
-                    endingBalance = currentBalance,
-                    totalContributionsToDate = totalContributions,
-                    totalInterestToDate = totalInterest
-                )
-            )
-        }
-
-        if (remainingFraction > 0.0) {
-            val yearStartBalance = currentBalance
-            val partialPeriods = (remainingFraction * nc).toInt().coerceAtLeast(1)
-            var yearContrib = 0.0
-            var yearInterest = 0.0
-
-            for (period in 1..partialPeriods) {
-                val fraction = remainingFraction / partialPeriods
-                val contribPart = additionalContribution * fraction
-
-                if (contributionTiming == ContributionTiming.BEGINNING) {
-                    currentBalance += contribPart
-                    totalContributions += contribPart
-                    yearContrib += contribPart
-                }
-
-                val periodInterest = currentBalance * ip * fraction
-                currentBalance += periodInterest
-                totalInterest += periodInterest
-                yearInterest += periodInterest
-
-                if (contributionTiming == ContributionTiming.END) {
-                    currentBalance += contribPart
-                    totalContributions += contribPart
-                    yearContrib += contribPart
-                }
-            }
-
-            schedule.add(
-                AnnualScheduleItem(
-                    year = fullYears + 1,
-                    startingBalance = yearStartBalance,
-                    annualContribution = yearContrib,
-                    annualInterest = yearInterest,
-                    endingBalance = currentBalance,
-                    totalContributionsToDate = totalContributions,
-                    totalInterestToDate = totalInterest
-                )
-            )
-        }
-
-        return SimulationResult(
-            endBalance = currentBalance,
-            totalContributions = totalContributions,
-            totalInterest = totalInterest,
-            schedule = schedule
-        )
     }
 
     private data class SimulationResult(
@@ -213,160 +186,124 @@ object InvestmentCalculator {
         val schedule: List<AnnualScheduleItem>
     )
 
-    private fun calculateEndAmount(input: InvestmentInput, locale: Locale): InvestmentResult {
-        val sim = simulate(
-            startingAmount = input.startingAmount,
-            investLengthYears = input.investLengthYears,
-            returnRatePercent = input.returnRatePercent,
-            additionalContribution = input.additionalContribution,
-            contributionFreq = input.contributionFrequency,
-            contributionTiming = input.contributionTiming,
-            compoundFreq = input.compoundFrequency
-        )
+    private fun simulate(input: InvestmentInput): SimulationResult {
+        val rate = periodicRate(input)
+        val nc = input.contributionFrequency.periodsPerYear
+        // No rounding up: an end-of-period payment must never arrive early.
+        val periods = input.investLengthYears * nc
+        val whole = floor(periods).toInt()
+        val remainder = periods - whole
+        var balance = input.startingAmount
+        var contributions = 0.0
+        var interest = 0.0
+        var year = 1
+        var start = balance
+        var yearContributions = 0.0
+        var yearInterest = 0.0
+        var pending = false
+        val schedule = mutableListOf<AnnualScheduleItem>()
 
-        return InvestmentResult(
-            mode = CalculationMode.END_AMOUNT,
-            solvedValue = sim.endBalance,
-            solvedLabel = "End Balance",
-            solvedUnit = getCurrencySymbol(locale),
-            endBalance = sim.endBalance,
-            startingAmount = input.startingAmount,
-            totalContributions = sim.totalContributions,
-            totalInterest = sim.totalInterest,
-            investLengthYears = input.investLengthYears,
-            returnRatePercent = input.returnRatePercent,
-            additionalContribution = input.additionalContribution,
-            schedule = sim.schedule
-        )
-    }
-
-    private fun calculateStartingAmount(input: InvestmentInput, locale: Locale): InvestmentResult {
-        // Linear relationship: EndBalance = P * factorP + factorC
-        val sim0 = simulate(0.0, input.investLengthYears, input.returnRatePercent, input.additionalContribution, input.contributionFrequency, input.contributionTiming, input.compoundFrequency)
-        val sim1 = simulate(10000.0, input.investLengthYears, input.returnRatePercent, input.additionalContribution, input.contributionFrequency, input.contributionTiming, input.compoundFrequency)
-
-        val factorP = (sim1.endBalance - sim0.endBalance) / 10000.0
-        val startingAmount = if (factorP != 0.0) {
-            ((input.targetEndAmount - sim0.endBalance) / factorP).coerceAtLeast(0.0)
-        } else {
-            0.0
+        fun deposit() {
+            balance += input.additionalContribution
+            contributions += input.additionalContribution
+            yearContributions += input.additionalContribution
         }
-
-        val simFinal = simulate(startingAmount, input.investLengthYears, input.returnRatePercent, input.additionalContribution, input.contributionFrequency, input.contributionTiming, input.compoundFrequency)
-
-        return InvestmentResult(
-            mode = CalculationMode.STARTING_AMOUNT,
-            solvedValue = startingAmount,
-            solvedLabel = "Starting Amount Required",
-            solvedUnit = getCurrencySymbol(locale),
-            endBalance = simFinal.endBalance,
-            startingAmount = startingAmount,
-            totalContributions = simFinal.totalContributions,
-            totalInterest = simFinal.totalInterest,
-            investLengthYears = input.investLengthYears,
-            returnRatePercent = input.returnRatePercent,
-            additionalContribution = input.additionalContribution,
-            schedule = simFinal.schedule
-        )
-    }
-
-    private fun calculateContributeAmount(input: InvestmentInput, locale: Locale): InvestmentResult {
-        // Linear relationship: EndBalance = C * factorC + factorP
-        val sim0 = simulate(input.startingAmount, input.investLengthYears, input.returnRatePercent, 0.0, input.contributionFrequency, input.contributionTiming, input.compoundFrequency)
-        val sim100 = simulate(input.startingAmount, input.investLengthYears, input.returnRatePercent, 100.0, input.contributionFrequency, input.contributionTiming, input.compoundFrequency)
-
-        val factorC = (sim100.endBalance - sim0.endBalance) / 100.0
-        val contribAmount = if (factorC != 0.0) {
-            ((input.targetEndAmount - sim0.endBalance) / factorC).coerceAtLeast(0.0)
-        } else {
-            0.0
-        }
-
-        val simFinal = simulate(input.startingAmount, input.investLengthYears, input.returnRatePercent, contribAmount, input.contributionFrequency, input.contributionTiming, input.compoundFrequency)
-
-        return InvestmentResult(
-            mode = CalculationMode.CONTRIBUTE_AMOUNT,
-            solvedValue = contribAmount,
-            solvedLabel = "Contribution Amount Required",
-            solvedUnit = getCurrencySymbol(locale),
-            endBalance = simFinal.endBalance,
-            startingAmount = input.startingAmount,
-            totalContributions = simFinal.totalContributions,
-            totalInterest = simFinal.totalInterest,
-            investLengthYears = input.investLengthYears,
-            returnRatePercent = input.returnRatePercent,
-            additionalContribution = contribAmount,
-            schedule = simFinal.schedule
-        )
-    }
-
-    private fun calculateReturnRate(input: InvestmentInput): InvestmentResult {
-        // Binary search for return rate r in [-90.0, 500.0]
-        var low = -90.0
-        var high = 500.0
-        var bestRate = 0.0
-
-        for (i in 0..60) {
-            val mid = (low + high) / 2.0
-            val sim = simulate(input.startingAmount, input.investLengthYears, mid, input.additionalContribution, input.contributionFrequency, input.contributionTiming, input.compoundFrequency)
-            if (sim.endBalance < input.targetEndAmount) {
-                low = mid
-            } else {
-                high = mid
+        fun accrue(fraction: Double) {
+            val amount = balance * (if (fraction == 1.0) rate else (1.0 + rate).pow(fraction) - 1.0)
+            balance += amount
+            interest += amount
+            yearInterest += amount
+            require(balance.isFinite() && interest.isFinite()) {
+                "The result is too large. Reduce the rate, duration or amounts."
             }
-            bestRate = mid
         }
-
-        val simFinal = simulate(input.startingAmount, input.investLengthYears, bestRate, input.additionalContribution, input.contributionFrequency, input.contributionTiming, input.compoundFrequency)
-
-        return InvestmentResult(
-            mode = CalculationMode.RETURN_RATE,
-            solvedValue = bestRate,
-            solvedLabel = "Return Rate Required",
-            solvedUnit = "%",
-            endBalance = simFinal.endBalance,
-            startingAmount = input.startingAmount,
-            totalContributions = simFinal.totalContributions,
-            totalInterest = simFinal.totalInterest,
-            investLengthYears = input.investLengthYears,
-            returnRatePercent = bestRate,
-            additionalContribution = input.additionalContribution,
-            schedule = simFinal.schedule
-        )
+        fun recordYear() {
+            schedule.add(AnnualScheduleItem(year, start, yearContributions, yearInterest,
+                balance, contributions, interest))
+            year++
+            start = balance
+            yearContributions = 0.0
+            yearInterest = 0.0
+            pending = false
+        }
+        for (period in 1..whole) {
+            if (input.contributionTiming == ContributionTiming.BEGINNING) deposit()
+            accrue(1.0)
+            if (input.contributionTiming == ContributionTiming.END) deposit()
+            pending = true
+            if (period % nc == 0) recordYear()
+        }
+        if (remainder > 0.0) {
+            if (input.contributionTiming == ContributionTiming.BEGINNING) deposit()
+            accrue(remainder)
+            pending = true
+        }
+        if (pending) recordYear()
+        return SimulationResult(balance, contributions, interest, schedule)
     }
 
-    private fun calculateInvestLength(input: InvestmentInput): InvestmentResult {
-        // Binary search for invest length in [0.01, 100.0] years
-        var low = 0.01
-        var high = 100.0
-        var bestLength = 1.0
-
-        for (i in 0..50) {
-            val mid = (low + high) / 2.0
-            val sim = simulate(input.startingAmount, mid, input.returnRatePercent, input.additionalContribution, input.contributionFrequency, input.contributionTiming, input.compoundFrequency)
-            if (sim.endBalance < input.targetEndAmount) {
-                low = mid
-            } else {
-                high = mid
-            }
-            bestLength = mid
+    private fun solveRate(input: InvestmentInput): Double {
+        var low = MIN_RETURN
+        var high = MAX_RETURN
+        val minimum = simulate(input.copy(returnRatePercent = low)).endBalance
+        val maximum = simulate(input.copy(returnRatePercent = high)).endBalance
+        val target = input.targetEndAmount
+        require(target >= minimum && target <= maximum) {
+            "Target cannot be reached with an annual return between $MIN_RETURN% and $MAX_RETURN%."
         }
+        require(maximum > minimum) { "These inputs do not determine a return rate." }
+        repeat(100) {
+            val mid = (low + high) / 2.0
+            if (simulate(input.copy(returnRatePercent = mid)).endBalance < target) low = mid
+            else high = mid
+        }
+        val achieved = simulate(input.copy(returnRatePercent = high)).endBalance
+        require(abs(achieved - target) <= maxOf(0.01, target * 1e-9)) {
+            "Could not find a reliable return rate for this target."
+        }
+        return high
+    }
 
-        val simFinal = simulate(input.startingAmount, bestLength, input.returnRatePercent, input.additionalContribution, input.contributionFrequency, input.contributionTiming, input.compoundFrequency)
-
-        return InvestmentResult(
-            mode = CalculationMode.INVEST_LENGTH,
-            solvedValue = bestLength,
-            solvedLabel = "Investment Duration Required",
-            solvedUnit = "Years",
-            endBalance = simFinal.endBalance,
-            startingAmount = input.startingAmount,
-            totalContributions = simFinal.totalContributions,
-            totalInterest = simFinal.totalInterest,
-            investLengthYears = bestLength,
-            returnRatePercent = input.returnRatePercent,
-            additionalContribution = input.additionalContribution,
-            schedule = simFinal.schedule
-        )
+    private fun solveDuration(input: InvestmentInput): Double {
+        // Duration means the earliest time the balance reaches AT LEAST the target.
+        if (input.startingAmount >= input.targetEndAmount) return 0.0
+        val nc = input.contributionFrequency.periodsPerYear
+        val rate = periodicRate(input)
+        var balance = input.startingAmount
+        val target = input.targetEndAmount
+        val contribution = input.additionalContribution
+        for (period in 0 until (MAX_YEARS * nc).toInt()) {
+            val startTime = period.toDouble() / nc
+            if (input.contributionTiming == ContributionTiming.BEGINNING) {
+                balance += contribution
+                if (balance >= target) {
+                    // simulate(0) intentionally has no deposits. Choose the first representable
+                    // time inside this period, so simulation includes its beginning deposit.
+                    var time = Math.nextUp(startTime)
+                    while (time * nc <= period.toDouble()) time = Math.nextUp(time)
+                    if (simulate(input.copy(investLengthYears = time)).endBalance >= target) return time
+                }
+            }
+            val afterInterest = balance * (1.0 + rate)
+            if (rate > 0.0 && balance > 0.0 && afterInterest >= target) {
+                val fraction = (ln(target / balance) / ln(1.0 + rate)).coerceIn(0.0, 1.0)
+                var time = (period + fraction) / nc
+                // Round toward a reached target, never return the unsuccessful side.
+                repeat(8) {
+                    if (simulate(input.copy(investLengthYears = time)).endBalance >= target) return time
+                    time = Math.nextUp(time)
+                }
+            }
+            balance = afterInterest
+            if (input.contributionTiming == ContributionTiming.END) {
+                balance += contribution
+                if (balance >= target) {
+                    var time = (period + 1.0) / nc
+                    while (time * nc < period + 1.0) time = Math.nextUp(time)
+                    return time
+                }
+            }
+        }
+        throw IllegalArgumentException("Target cannot be reached within $MAX_YEARS years with these inputs.")
     }
 }
