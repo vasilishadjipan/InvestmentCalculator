@@ -46,8 +46,8 @@ fun ResultSummaryCard(
         com.vasilis.investmentcalculator.CalculationMode.RETURN_RATE ->
             "${numberFormat.format(result.solvedValue)}%"
         com.vasilis.investmentcalculator.CalculationMode.INVEST_LENGTH ->
-            if (result.solvedValue > 0.0 && result.solvedValue < 0.005)
-                "Immediately (beginning contribution)" else "${numberFormat.format(result.solvedValue)} years"
+            if (result.solvedValue > 0.0 && result.solvedValue < 0.01)
+                "Less than 0.01 years" else "${numberFormat.format(result.solvedValue)} years"
         else -> currencyFormat.format(result.solvedValue)
     }
 
