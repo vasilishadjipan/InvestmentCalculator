@@ -1,6 +1,14 @@
 package com.vasilis.investmentcalculator
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,8 +30,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -45,8 +51,9 @@ fun InvestmentCalculatorScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val scrollState = rememberScrollState()
-    val density = LocalDensity.current
-    val configuration = LocalConfiguration.current
+    val resultsRequester = remember { BringIntoViewRequester() }
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     val locale = LocalLocale.current.platformLocale
 
     LaunchedEffect(locale) {
@@ -57,13 +64,13 @@ fun InvestmentCalculatorScreen(
         AnalyticsHelper.logScreenView(uiState.input.mode.title)
     }
 
-    LaunchedEffect(uiState.hasCalculated) {
+    LaunchedEffect(uiState.calculationId, uiState.hasCalculated) {
         if (uiState.hasCalculated) {
-            val screenHeightPx = with(density) { configuration.screenHeightDp.dp.roundToPx() }
-            val scrollTarget = scrollState.value + (screenHeightPx * 2 / 3)
-            scrollState.animateScrollTo(scrollTarget)
+            withFrameNanos { }
+            resultsRequester.bringIntoView()
         }
     }
+    LaunchedEffect(uiState.input.mode) { scrollState.scrollTo(0) }
 
     Scaffold(
         bottomBar = {
@@ -80,6 +87,7 @@ fun InvestmentCalculatorScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .imePadding()
         ) {
             // Mode Tabs
             ModeTabSelector(
@@ -122,8 +130,12 @@ fun InvestmentCalculatorScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Button(
-                        onClick = { viewModel.calculateResult() },
-                        enabled = uiState.isFormValid,
+                        onClick = {
+                            focusManager.clearFocus()
+                            keyboard?.hide()
+                            viewModel.calculateResult()
+                        },
+                        enabled = uiState.isFormValid && !uiState.isCalculating,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary
@@ -131,7 +143,7 @@ fun InvestmentCalculatorScreen(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text(text = "Calculate", fontWeight = FontWeight.Bold)
+                        Text(text = if (uiState.isCalculating) "Calculating…" else "Calculate", fontWeight = FontWeight.Bold)
                     }
 
                     OutlinedButton(
@@ -146,10 +158,16 @@ fun InvestmentCalculatorScreen(
                     }
                 }
 
+                uiState.calculationError?.let { message ->
+                    Text(text = message, color = MaterialTheme.colorScheme.error)
+                }
+
                 // Results, Charts, and Schedule Table (shown only after clicking Calculate)
                 if (uiState.hasCalculated) {
                     // Results Summary Hero Card
-                    ResultSummaryCard(result = uiState.result)
+                    Box(Modifier.bringIntoViewRequester(resultsRequester)) {
+                        ResultSummaryCard(result = uiState.result)
+                    }
 
                     // Breakdown Donut Chart
                     InvestmentBreakdownChart(result = uiState.result)
