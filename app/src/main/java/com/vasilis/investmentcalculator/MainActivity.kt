@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -46,6 +47,7 @@ class MainActivity : ComponentActivity() {
     private var isLoadingAd = false
     private var isShowingAd = false
     private var isMobileAdsInitialized = false
+    private var isInitializingAds = false
 
     private var isAppForeground = false
 
@@ -71,6 +73,7 @@ class MainActivity : ComponentActivity() {
         override fun onStart(owner: LifecycleOwner) {
             // The app has entered the foreground.
             isAppForeground = true
+            if (isShowingAd) return
             hasShownAdThisForeground = false
 
             if (isMobileAdsInitialized && showAds) {
@@ -116,8 +119,8 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     } else {
-                        if (showAds && !isMobileAdsInitialized) {
-                            setupAds()
+                        LaunchedEffect(showAds) {
+                            if (showAds) setupAds()
                         }
                         InvestmentCalculatorScreen(showAds = showAds)
                     }
@@ -127,10 +130,13 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun setupAds() {
-        if (isMobileAdsInitialized) return
+        if (isMobileAdsInitialized || isInitializingAds) return
+        isInitializingAds = true
         MobileAds.initialize(applicationContext) {
             runOnUiThread {
+                isInitializingAds = false
                 isMobileAdsInitialized = true
+                if (isDestroyed) return@runOnUiThread
                 if (showAds) {
                     loadAppOpenAd()
                 }
@@ -139,8 +145,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Loads an ad without displaying it automatically unless this is
-     * the first available ad for the current foreground session.
+     * Preloads for a future foreground transition. Loading never interrupts input.
      */
     private fun loadAppOpenAd() {
         if (!showAds) return
@@ -161,15 +166,13 @@ class MainActivity : ComponentActivity() {
                 override fun onAdLoaded(ad: AppOpenAd) {
                     Log.d(TAG, "App Open ad loaded")
 
+                    if (isDestroyed) return
                     appOpenAd = ad
                     adLoadTime = System.currentTimeMillis()
                     isLoadingAd = false
 
-                    // Show only if the app is foregrounded and no ad
-                    // has already been shown in this foreground session.
-                    if (isAppForeground && !hasShownAdThisForeground && showAds) {
-                        showAppOpenAd()
-                    }
+                    // Only the foreground transition may show an already cached ad.
+                    if (isDestroyed) appOpenAd = null
                 }
 
                 override fun onAdFailedToLoad(error: LoadAdError) {
