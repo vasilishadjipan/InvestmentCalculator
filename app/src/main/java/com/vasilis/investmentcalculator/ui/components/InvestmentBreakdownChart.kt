@@ -39,7 +39,9 @@ fun InvestmentBreakdownChart(
     result: InvestmentResult,
     modifier: Modifier = Modifier
 ) {
-    val total = result.endBalance.coerceAtLeast(0.01)
+    if (result.endBalance <= 0.0 || result.totalInterest < 0.0) return
+
+    val total = result.endBalance
     val principalPct = (result.startingAmount / total).coerceIn(0.0, 1.0).toFloat()
     val contribPct = (result.totalContributions / total).coerceIn(0.0, 1.0).toFloat()
     val interestPct = (result.totalInterest / total).coerceIn(0.0, 1.0).toFloat()
