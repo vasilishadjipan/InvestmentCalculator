@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.vasilis.investmentcalculator.InvestmentInputValidation
 import com.vasilis.investmentcalculator.CalculationMode
 import com.vasilis.investmentcalculator.CompoundFrequency
 import com.vasilis.investmentcalculator.ContributionFrequency
@@ -104,7 +105,8 @@ fun InvestmentInputFields(
                     label = "Investment Length",
                     value = inputState.investLengthStr,
                     onValueChange = onInvestLengthYearsChange,
-                    suffix = " years"
+                    suffix = " years",
+                    maxValue = InvestmentCalculator.MAX_YEARS
                 )
             }
 
@@ -114,7 +116,9 @@ fun InvestmentInputFields(
                     label = "Annual Return Rate",
                     value = inputState.returnRateStr,
                     onValueChange = onReturnRatePercentChange,
-                    suffix = " %"
+                    suffix = " %",
+                    minValue = InvestmentCalculator.MIN_RETURN,
+                    maxValue = InvestmentCalculator.MAX_RETURN
                 )
             }
 
@@ -265,9 +269,12 @@ private fun NumberInputField(
     onValueChange: (String) -> Unit,
     prefix: String? = null,
     suffix: String? = null,
+    minValue: Double = 0.0,
+    maxValue: Double = InvestmentCalculator.MAX_AMOUNT,
     modifier: Modifier = Modifier
 ) {
-    val isError = value.isEmpty()
+    val error = InvestmentInputValidation.error(value, minValue, maxValue)
+    val isError = error != null
 
     OutlinedTextField(
         value = value,
@@ -277,14 +284,14 @@ private fun NumberInputField(
         supportingText = if (isError) {
             {
                 Text(
-                    text = "Field cannot be empty",
+                    text = error.orEmpty(),
                     color = MaterialTheme.colorScheme.error
                 )
             }
         } else null,
         prefix = prefix?.let { { Text(it) } },
         suffix = suffix?.let { { Text(it) } },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
         singleLine = true,
         modifier = modifier.fillMaxWidth()
     )
