@@ -2,6 +2,7 @@ package com.vasilis.investmentcalculator.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -40,10 +41,13 @@ fun ResultSummaryCard(
         minimumFractionDigits = 2
     }
 
-    val formattedSolvedValue = when (result.solvedUnit) {
-        "$" -> currencyFormat.format(result.solvedValue)
-        "%" -> "${numberFormat.format(result.solvedValue)}%"
-        else -> "${numberFormat.format(result.solvedValue)} ${result.solvedUnit}"
+    val formattedSolvedValue = when (result.mode) {
+        com.vasilis.investmentcalculator.CalculationMode.RETURN_RATE ->
+            "${numberFormat.format(result.solvedValue)}%"
+        com.vasilis.investmentcalculator.CalculationMode.INVEST_LENGTH ->
+            if (result.solvedValue > 0.0 && result.solvedValue < 0.005)
+                "Immediately (beginning contribution)" else "${numberFormat.format(result.solvedValue)} years"
+        else -> currencyFormat.format(result.solvedValue)
     }
 
     Column(
@@ -108,9 +112,8 @@ fun ResultSummaryCard(
                 SummaryRow(
                     label = "End Balance",
                     value = currencyFormat.format(result.endBalance),
+                    color = MaterialTheme.colorScheme.primary
                 )
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                 SummaryRow(
                     label = "Starting Principal",
@@ -142,10 +145,9 @@ private fun SummaryRow(
     isBold: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    FlowRow(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
