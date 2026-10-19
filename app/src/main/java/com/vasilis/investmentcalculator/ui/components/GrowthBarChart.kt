@@ -2,6 +2,7 @@ package com.vasilis.investmentcalculator.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -150,10 +151,10 @@ fun GrowthBarChart(
             )
 
             // Legend Row
-            Row(
+            FlowRow(
                 modifier = Modifier.align(Alignment.CenterHorizontally),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 GrowthLegendItem(color = PrincipalColor, label = "Principal")
                 GrowthLegendItem(color = ContributionsColor, label = "Contributions")
