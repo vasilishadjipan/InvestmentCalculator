@@ -46,8 +46,9 @@ fun GrowthBarChart(
 
     if (schedule.isEmpty()) return
 
-    val currencyFormat = remember {
-        NumberFormat.getCurrencyInstance(Locale.getDefault()).apply {
+    val locale = androidx.compose.ui.platform.LocalLocale.current.platformLocale
+    val currencyFormat = remember(locale) {
+        NumberFormat.getCurrencyInstance(locale).apply {
             maximumFractionDigits = 0
         }
     }
@@ -60,38 +61,10 @@ fun GrowthBarChart(
         modelProducer.runTransaction {
 
             columnModel {
-
-                // Principal
-                series(
-                    schedule.indices.map { it.toFloat() },
-                    schedule.map { item ->
-                        result.startingAmount
-                            .coerceAtMost(item.endingBalance)
-                    }
-                )
-
-                // Contributions
-                series(
-                    schedule.indices.map { it.toFloat() },
-                    schedule.map { item ->
-                        val principal = result.startingAmount
-                            .coerceAtMost(item.endingBalance)
-
-                        item.totalContributionsToDate
-                            .coerceAtMost(
-                                item.endingBalance - principal
-                            )
-                    }
-                )
-
-                // Interest
-                series(
-                    schedule.indices.map { it.toFloat() },
-                    schedule.map { item ->
-                        item.totalInterestToDate
-                            .coerceAtLeast(0.0)
-                    }
-                )
+                val years = schedule.map { it.year }
+                series(years, schedule.map { result.startingAmount })
+                series(years, schedule.map { it.totalContributionsToDate })
+                series(years, schedule.map { it.totalInterestToDate })
             }
         }
     }
@@ -157,10 +130,11 @@ fun GrowthBarChart(
                     ),
 
                     bottomAxis = HorizontalAxis.rememberBottom(
-                        itemPlacer = HorizontalAxis.ItemPlacer.aligned(),
+                        itemPlacer = HorizontalAxis.ItemPlacer.aligned(
+                            spacing = { maxOf(1, (schedule.size + 5) / 6) }
+                        ),
                         valueFormatter = { _, value, _ ->
-                            val index = value.roundToInt()
-                            schedule.getOrNull(index)?.year?.toString() ?: value.roundToInt().toString()
+                            value.roundToInt().toString()
                         }
                     )
                 ),
