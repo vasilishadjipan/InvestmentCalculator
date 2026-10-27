@@ -28,6 +28,8 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "AppOpenAd"
+        private const val KEY_SHOW_ADS = "key_show_ads"
+        private const val KEY_HAS_CHOSEN_ADS = "key_has_chosen_ads"
 
         // Google's official App Open test ad unit ID.
         private const val TEST_AD_UNIT_ID =
@@ -94,6 +96,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        if (savedInstanceState != null) {
+            showAds = savedInstanceState.getBoolean(KEY_SHOW_ADS, true)
+            hasChosenAdsPreference = savedInstanceState.getBoolean(KEY_HAS_CHOSEN_ADS, false)
+        }
+
         AnalyticsHelper.init(applicationContext)
 
         // Register once to observe app-level foreground/background changes.
@@ -247,6 +255,12 @@ class MainActivity : ComponentActivity() {
         }
 
         return true
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(KEY_SHOW_ADS, showAds)
+        outState.putBoolean(KEY_HAS_CHOSEN_ADS, hasChosenAdsPreference)
     }
 
     override fun onDestroy() {
