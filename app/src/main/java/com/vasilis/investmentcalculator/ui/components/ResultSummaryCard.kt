@@ -38,16 +38,15 @@ fun ResultSummaryCard(
     }
 
     val numberFormat = NumberFormat.getNumberInstance(locale).apply {
-        maximumFractionDigits = 2
-        minimumFractionDigits = 2
+        maximumFractionDigits = 3
+        minimumFractionDigits = 3
     }
 
     val formattedSolvedValue = when (result.mode) {
         com.vasilis.investmentcalculator.CalculationMode.RETURN_RATE ->
             "${numberFormat.format(result.solvedValue)}%"
         com.vasilis.investmentcalculator.CalculationMode.INVEST_LENGTH ->
-            if (result.solvedValue > 0.0 && result.solvedValue < 0.01)
-                "Less than 0.01 years" else "${numberFormat.format(result.solvedValue)} years"
+            "${numberFormat.format(result.solvedValue)} years"
         else -> currencyFormat.format(result.solvedValue)
     }
 
