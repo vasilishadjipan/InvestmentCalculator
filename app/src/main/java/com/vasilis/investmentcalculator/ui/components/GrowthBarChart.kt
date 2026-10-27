@@ -56,36 +56,39 @@ fun GrowthBarChart(
         }
     }
 
+    val hasValidInterest = remember(schedule) {
+        schedule.all { it.totalInterestToDate >= 0.0 }
+    }
+
     val modelProducer = remember {
         CartesianChartModelProducer()
     }
 
-    LaunchedEffect(schedule, result.startingAmount) {
+    LaunchedEffect(schedule, result.startingAmount, hasValidInterest) {
         modelProducer.runTransaction {
-
             columnModel {
                 val years = schedule.map { it.year }
                 series(years, schedule.map { result.startingAmount })
                 series(years, schedule.map { it.totalContributionsToDate })
-                series(years, schedule.map { it.totalInterestToDate })
+                if (hasValidInterest) {
+                    series(years, schedule.map { it.totalInterestToDate })
+                }
             }
         }
     }
 
     val columnLayer = rememberColumnCartesianLayer(
         columnProvider = ColumnCartesianLayer.ColumnProvider.series(
-            rememberLineComponent(
-                fill = Fill(PrincipalColor),
-                thickness = 12.dp
-            ),
-            rememberLineComponent(
-                fill = Fill(ContributionsColor),
-                thickness = 12.dp
-            ),
-            rememberLineComponent(
-                fill = Fill(InterestColor),
-                thickness = 12.dp
-            )
+            listOfNotNull(
+                PrincipalColor,
+                ContributionsColor,
+                if (hasValidInterest) InterestColor else null
+            ).map { color ->
+                rememberLineComponent(
+                    fill = Fill(color),
+                    thickness = 12.dp
+                )
+            }
         ),
         mergeMode = { ColumnCartesianLayer.MergeMode.Stacked }
     )
@@ -158,7 +161,9 @@ fun GrowthBarChart(
             ) {
                 GrowthLegendItem(color = PrincipalColor, label = "Principal")
                 GrowthLegendItem(color = ContributionsColor, label = "Contributions")
-                GrowthLegendItem(color = InterestColor, label = "Interest")
+                if (hasValidInterest) {
+                    GrowthLegendItem(color = InterestColor, label = "Interest")
+                }
             }
         }
     }
