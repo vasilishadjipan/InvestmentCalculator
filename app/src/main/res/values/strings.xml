@@ -1,5 +1,7 @@
 <resources>
     <string name="app_name">Investment Calculator</string>
+    <string name="schedule_more_left">More columns to the left</string>
+    <string name="schedule_more_right">More columns to the right</string>
     <string name="action_go">Go</string>
     <string name="baking_title">Baking with Gemini</string>
     <string name="label_prompt">Prompt</string>
