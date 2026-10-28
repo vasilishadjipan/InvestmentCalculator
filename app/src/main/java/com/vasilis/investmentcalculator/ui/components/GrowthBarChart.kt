@@ -121,7 +121,7 @@ fun GrowthBarChart(
                     text = "Accumulation Growth",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
 

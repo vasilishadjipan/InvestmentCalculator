@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="finance_primary">#3FD58A</color>
+    <color name="finance_primary">#0067A3</color>
     <color name="finance_secondary">#0D7254</color>
     <color name="finance_tertiary">#2F934B</color>
     <color name="principal">#1E3657</color>
@@ -9,7 +9,7 @@
     <color name="accent_gold">#E8C668</color>
     <color name="accent_orange">#E99953</color>
     <color name="dark_background">#142B43</color>
-    <color name="light_cream">#F1F6E9</color>
+    <color name="light_cream">#F5F8FC</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 </resources>

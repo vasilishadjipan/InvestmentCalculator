@@ -107,7 +107,7 @@ fun InvestmentCalculatorScreen(
                     text = uiState.input.mode.description,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight. Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
 
                 // Editable Input Parameters

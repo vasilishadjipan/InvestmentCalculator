@@ -14,7 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 private val DarkColorScheme = darkColorScheme(
     primary = FinancePrimary,
     onPrimary = DarkBackground,
-    primaryContainer = DarkGreenContainer,
+    primaryContainer = DarkBlueContainer,
     onPrimaryContainer = DarkText,
 
     secondary = FinanceTertiary,
@@ -46,7 +46,7 @@ private val DarkColorScheme = darkColorScheme(
 
     inverseSurface = LightBackground,
     inverseOnSurface = TextPrimary,
-    inversePrimary = FinanceSecondary,
+    inversePrimary = FinancePrimaryLight,
 
     outline = DarkOutline,
     outlineVariant = Color(0xFF3A536D),
@@ -58,10 +58,10 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = FinanceSecondary,
+    primary = FinancePrimaryLight,
     onPrimary = Color.White,
-    primaryContainer = LightGreenContainer,
-    onPrimaryContainer = FinanceSecondary,
+    primaryContainer = LightBlueContainer,
+    onPrimaryContainer = DarkBlueContainer,
 
     secondary = FinanceTertiary,
     onSecondary = Color.White,
@@ -78,24 +78,24 @@ private val LightColorScheme = lightColorScheme(
 
     surface = LightSurface,
     onSurface = TextPrimary,
-    surfaceVariant = Color(0xFFE7EEE8),
+    surfaceVariant = Color(0xFFE7EEF6),
     onSurfaceVariant = TextSecondary,
 
     surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFF8FAF6),
-    surfaceContainer = Color(0xFFF0F4EE),
-    surfaceContainerHigh = Color(0xFFE9EFE8),
-    surfaceContainerHighest = Color(0xFFDDE6DD),
+    surfaceContainerLow = Color(0xFFF8FAFD),
+    surfaceContainer = Color(0xFFF0F4FA),
+    surfaceContainerHigh = Color(0xFFE8EEF6),
+    surfaceContainerHighest = Color(0xFFDDE6F0),
 
     surfaceBright = Color.White,
-    surfaceDim = Color(0xFFD8E1D7),
+    surfaceDim = Color(0xFFD8E2EE),
 
     inverseSurface = DarkSurface,
     inverseOnSurface = DarkText,
     inversePrimary = FinancePrimary,
 
     outline = LightOutline,
-    outlineVariant = Color(0xFFDCE5DE),
+    outlineVariant = Color(0xFFDCE4EE),
 
     error = Color(0xFFB3261E),
     onError = Color.White,
