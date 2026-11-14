@@ -117,6 +117,8 @@ fun InvestmentCalculatorScreen(
                     onTargetEndAmountChange = { viewModel.updateTargetEndAmount(it) },
                     onStartingAmountChange = { viewModel.updateStartingAmount(it) },
                     onInvestLengthYearsChange = { viewModel.updateInvestLengthYears(it) },
+                    onInvestLengthMonthsChange = { viewModel.updateInvestLengthMonths(it) },
+                    onInvestLengthDaysChange = { viewModel.updateInvestLengthDays(it) },
                     onReturnRatePercentChange = { viewModel.updateReturnRatePercent(it) },
                     onAdditionalContributionChange = { viewModel.updateAdditionalContribution(it) },
                     onContributionFrequencyChange = { viewModel.updateContributionFrequency(it) },

@@ -20,6 +20,8 @@ data class InvestmentInputState(
     val targetEndAmountStr: String = 100000.0.formatNoDecimal(),
     val startingAmountStr: String = 10000.0.formatNoDecimal(),
     val investLengthStr: String = 10.0.formatNoDecimal(),
+    val investLengthMonthsStr: String = "0",
+    val investLengthDaysStr: String = "0",
     val returnRateStr: String = 7.0.formatNoDecimal(),
     val additionalContributionStr: String = 200.0.formatNoDecimal()
 )
@@ -37,21 +39,47 @@ data class InvestmentUiState(
 
 /** A comma is accepted as a decimal separator; grouping separators are not accepted. */
 object InvestmentInputValidation {
+    fun durationYears(state: InvestmentInputState): Double =
+        (parse(state.investLengthStr) ?: 0.0) +
+            (parse(state.investLengthMonthsStr) ?: 0.0) / 12.0 +
+            (parse(state.investLengthDaysStr) ?: 0.0) / 365.0
+
+    private fun durationFieldsError(state: InvestmentInputState): String? {
+        for ((value, max) in listOf(state.investLengthStr to InvestmentCalculator.MAX_YEARS,
+            state.investLengthMonthsStr to InvestmentCalculator.MAX_YEARS * 12,
+            state.investLengthDaysStr to InvestmentCalculator.MAX_YEARS * 365)) {
+            error(value, max = max)?.let { return it }
+            if (value.any { it !in '0'..'9' }) return "Enter a whole number"
+        }
+        return null
+    }
+
+    fun durationError(state: InvestmentInputState): String? =
+        durationFieldsError(state) ?: durationTotalError(state)
+
+    fun durationTotalError(state: InvestmentInputState): String? {
+        if (durationFieldsError(state) != null) return null
+        return if (durationYears(state) > InvestmentCalculator.MAX_YEARS)
+            "Total investment length cannot exceed ${java.math.BigDecimal.valueOf(InvestmentCalculator.MAX_YEARS).stripTrailingZeros().toPlainString()} years" else null
+    }
+
     fun parse(text: String): Double? = text.trim().replace(',', '.').toDoubleOrNull()
         ?.takeIf { it.isFinite() }
 
     fun error(text: String, min: Double = 0.0,
               max: Double = InvestmentCalculator.MAX_AMOUNT): String? {
         if (text.isBlank()) return "Field cannot be empty"
+        val minLabel = java.math.BigDecimal.valueOf(min).stripTrailingZeros().toPlainString()
+        val maxLabel = java.math.BigDecimal.valueOf(max).stripTrailingZeros().toPlainString()
+        val rangeError = "Enter a value between $minLabel and $maxLabel"
         val value = parse(text) ?: return "Enter a valid number (for example 7.5 or 7,5)"
-        return if (value !in min..max) "Enter a value between $min and $max" else null
+        return if (value !in min..max) rangeError else null
     }
 
     fun isValid(mode: CalculationMode, state: InvestmentInputState): Boolean =
         (mode == CalculationMode.END_AMOUNT || error(state.targetEndAmountStr) == null) &&
                 (mode == CalculationMode.STARTING_AMOUNT || error(state.startingAmountStr) == null) &&
-                (mode == CalculationMode.INVEST_LENGTH || error(state.investLengthStr,
-                    max = InvestmentCalculator.MAX_YEARS) == null) &&
+                (mode == CalculationMode.INVEST_LENGTH || durationError(state) == null) &&
                 (mode == CalculationMode.RETURN_RATE || error(state.returnRateStr,
                     InvestmentCalculator.MIN_RETURN, InvestmentCalculator.MAX_RETURN) == null) &&
                 (mode == CalculationMode.CONTRIBUTE_AMOUNT || error(state.additionalContributionStr) == null)
@@ -88,10 +116,14 @@ class InvestmentViewModel : ViewModel() {
         it.copy(inputState = it.inputState.copy(startingAmountStr = text),
             input = it.input.copy(startingAmount = InvestmentInputValidation.parse(text) ?: 0.0))
     }
-    fun updateInvestLengthYears(text: String) = edit {
-        it.copy(inputState = it.inputState.copy(investLengthStr = text),
-            input = it.input.copy(investLengthYears = InvestmentInputValidation.parse(text) ?: 0.0))
+    private fun updateDuration(transform: (InvestmentInputState) -> InvestmentInputState) = edit {
+        val state = transform(it.inputState)
+        it.copy(inputState = state,
+            input = it.input.copy(investLengthYears = InvestmentInputValidation.durationYears(state)))
     }
+    fun updateInvestLengthYears(text: String) = updateDuration { it.copy(investLengthStr = text) }
+    fun updateInvestLengthMonths(text: String) = updateDuration { it.copy(investLengthMonthsStr = text) }
+    fun updateInvestLengthDays(text: String) = updateDuration { it.copy(investLengthDaysStr = text) }
     fun updateReturnRatePercent(text: String) = edit {
         it.copy(inputState = it.inputState.copy(returnRateStr = text),
             input = it.input.copy(returnRatePercent = InvestmentInputValidation.parse(text) ?: 0.0))

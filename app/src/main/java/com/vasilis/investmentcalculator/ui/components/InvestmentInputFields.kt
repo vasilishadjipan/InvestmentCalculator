@@ -51,6 +51,8 @@ fun InvestmentInputFields(
     onTargetEndAmountChange: (String) -> Unit,
     onStartingAmountChange: (String) -> Unit,
     onInvestLengthYearsChange: (String) -> Unit,
+    onInvestLengthMonthsChange: (String) -> Unit,
+    onInvestLengthDaysChange: (String) -> Unit,
     onReturnRatePercentChange: (String) -> Unit,
     onAdditionalContributionChange: (String) -> Unit,
     onContributionFrequencyChange: (ContributionFrequency) -> Unit,
@@ -101,13 +103,45 @@ fun InvestmentInputFields(
 
             // Investment Length
             if (input.mode != CalculationMode.INVEST_LENGTH) {
-                NumberInputField(
-                    label = "Investment Length",
-                    value = inputState.investLengthStr,
-                    onValueChange = onInvestLengthYearsChange,
-                    suffix = " years",
-                    maxValue = InvestmentCalculator.MAX_YEARS
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        NumberInputField(
+                            label = "Years",
+                            integerOnly = true,
+                            value = inputState.investLengthStr,
+                            onValueChange = onInvestLengthYearsChange,
+                            maxValue = InvestmentCalculator.MAX_YEARS,
+                            modifier = Modifier.weight(1f)
+                        )
+                        NumberInputField(
+                            label = "Months",
+                            integerOnly = true,
+                            value = inputState.investLengthMonthsStr,
+                            onValueChange = onInvestLengthMonthsChange,
+                            maxValue = InvestmentCalculator.MAX_YEARS * 12,
+                            modifier = Modifier.weight(1f)
+                        )
+                        NumberInputField(
+                            label = "Days",
+                            integerOnly = true,
+                            value = inputState.investLengthDaysStr,
+                            onValueChange = onInvestLengthDaysChange,
+                            maxValue = InvestmentCalculator.MAX_YEARS * 365,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    InvestmentInputValidation.durationTotalError(inputState)?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
             }
 
             // Return Rate
@@ -271,6 +305,7 @@ private fun NumberInputField(
     suffix: String? = null,
     minValue: Double = 0.0,
     maxValue: Double = InvestmentCalculator.MAX_AMOUNT,
+    integerOnly: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val error = InvestmentInputValidation.error(value, minValue, maxValue)
@@ -278,7 +313,9 @@ private fun NumberInputField(
 
     OutlinedTextField(
         value = value,
-        onValueChange = onValueChange,
+        onValueChange = { text ->
+            if (!integerOnly || text.all { it in '0'..'9' }) onValueChange(text)
+        },
         label = { Text(label) },
         isError = isError,
         supportingText = if (isError) {
@@ -291,7 +328,9 @@ private fun NumberInputField(
         } else null,
         prefix = prefix?.let { { Text(it) } },
         suffix = suffix?.let { { Text(it) } },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        keyboardOptions = KeyboardOptions(
+            keyboardType = if (integerOnly) KeyboardType.Number else KeyboardType.Decimal
+        ),
         singleLine = true,
         modifier = modifier.fillMaxWidth()
     )
