@@ -22,6 +22,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
             manifestPlaceholders["admobAppId"] = "ca-app-pub-3940256099942544~3347512133"
         }
         release {
