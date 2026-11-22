@@ -13,7 +13,7 @@ android {
         applicationId = "com.vasilis.investmentcalculator"
         minSdk = 24
         targetSdk = 37
-        versionCode = 11
+        versionCode = 12
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
