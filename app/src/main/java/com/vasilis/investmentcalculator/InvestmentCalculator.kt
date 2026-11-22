@@ -7,6 +7,9 @@ import kotlin.math.ln
 import kotlin.math.floor
 import kotlin.math.abs
 
+internal fun durationInYears(totalMonths: Double, days: Double): Double =
+    (totalMonths * 365.0 + days * 12.0) / (12.0 * 365.0)
+
 enum class CalculationMode(val title: String, val description: String) {
     END_AMOUNT("End Amount", "Calculate final balance"),
     STARTING_AMOUNT("Starting Amount", "Calculate initial deposit"),

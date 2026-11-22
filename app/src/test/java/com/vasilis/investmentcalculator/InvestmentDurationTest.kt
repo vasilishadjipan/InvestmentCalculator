@@ -1,9 +1,21 @@
 package com.vasilis.investmentcalculator
 
+import com.vasilis.investmentcalculator.ui.components.formatInvestmentDuration
+import java.util.Locale
 import org.junit.Assert.*
 import org.junit.Test
 
 class InvestmentDurationTest {
+    @Test fun requiredDurationDisplaysYearsMonthsAndDays() {
+        val result = InvestmentCalculator.calculate(InvestmentInput(
+            mode = CalculationMode.INVEST_LENGTH, targetEndAmount = 200.0, startingAmount = 0.0,
+            returnRatePercent = 0.0, additionalContribution = 200.0))
+        assertEquals("0y 1m 0d", formatInvestmentDuration(result.solvedValue, Locale.US))
+        assertEquals("1y 2m 3d", formatInvestmentDuration(durationInYears(14.0, 3.0), Locale.US))
+        assertEquals("0y 0m 1d", formatInvestmentDuration(0.5 / 365.0, Locale.US))
+        assertEquals("1y 0m 0d", formatInvestmentDuration(Math.nextDown(1.0), Locale.US))
+    }
+
     @Test fun rowErrorOnlyShowsCombinedLimitForValidFields() {
         for (value in listOf("", "101", "-1", "1.5", "abc")) {
             val state = InvestmentInputState(investLengthStr = value)
@@ -63,11 +75,20 @@ class InvestmentDurationTest {
         }
     }
 
-    @Test fun monthInputsPreserveContributionBoundaries() {
-        val state = InvestmentInputState(investLengthStr = "0", investLengthMonthsStr = "6")
-        val result = InvestmentCalculator.calculate(InvestmentInput(startingAmount = 0.0,
-            returnRatePercent = 0.0, additionalContribution = 200.0,
-            investLengthYears = InvestmentInputValidation.durationYears(state)))
-        assertEquals(1200.0, result.endBalance, 1e-9)
+    @Test fun durationInputsPreserveMonthlyContributionBoundaries() {
+        val monthAndDayInputs = InvestmentInputState(investLengthStr = "0",
+            investLengthMonthsStr = "13", investLengthDaysStr = "365")
+        val cases = listOf(
+            InvestmentInputState(investLengthStr = "0", investLengthMonthsStr = "6") to 6,
+            InvestmentInputState(investLengthStr = "1", investLengthMonthsStr = "13") to 25,
+            monthAndDayInputs to 25,
+            monthAndDayInputs.copy(investLengthDaysStr = "364") to 24
+        )
+        for ((state, expectedPayments) in cases) {
+            val result = InvestmentCalculator.calculate(InvestmentInput(startingAmount = 0.0,
+                returnRatePercent = 0.0, additionalContribution = 200.0,
+                investLengthYears = InvestmentInputValidation.durationYears(state)))
+            assertEquals(expectedPayments * 200.0, result.endBalance, 1e-9)
+        }
     }
 }

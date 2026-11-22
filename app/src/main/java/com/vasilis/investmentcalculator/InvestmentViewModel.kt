@@ -39,10 +39,13 @@ data class InvestmentUiState(
 
 /** A comma is accepted as a decimal separator; grouping separators are not accepted. */
 object InvestmentInputValidation {
-    fun durationYears(state: InvestmentInputState): Double =
-        (parse(state.investLengthStr) ?: 0.0) +
-            (parse(state.investLengthMonthsStr) ?: 0.0) / 12.0 +
-            (parse(state.investLengthDaysStr) ?: 0.0) / 365.0
+    fun durationYears(state: InvestmentInputState): Double {
+        val years = parse(state.investLengthStr) ?: 0.0
+        val months = parse(state.investLengthMonthsStr) ?: 0.0
+        val days = parse(state.investLengthDaysStr) ?: 0.0
+        // Use a common denominator so equivalent durations round to the same value.
+        return durationInYears(years * 12.0 + months, days)
+    }
 
     private fun durationFieldsError(state: InvestmentInputState): String? {
         for ((value, max) in listOf(state.investLengthStr to InvestmentCalculator.MAX_YEARS,

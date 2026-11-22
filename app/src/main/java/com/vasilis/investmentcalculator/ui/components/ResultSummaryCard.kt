@@ -19,10 +19,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vasilis.investmentcalculator.InvestmentResult
+import com.vasilis.investmentcalculator.durationInYears
 import com.vasilis.investmentcalculator.ui.theme.ContributionsColor
 import com.vasilis.investmentcalculator.ui.theme.InterestColor
 import com.vasilis.investmentcalculator.ui.theme.PrincipalColor
 import java.text.NumberFormat
+import java.util.Locale
 import androidx.compose.ui.platform.LocalLocale
 import com.vasilis.investmentcalculator.ui.theme.AccentGold
 
@@ -46,7 +48,7 @@ fun ResultSummaryCard(
         com.vasilis.investmentcalculator.CalculationMode.RETURN_RATE ->
             "${numberFormat.format(result.solvedValue)}%"
         com.vasilis.investmentcalculator.CalculationMode.INVEST_LENGTH ->
-            "${numberFormat.format(result.solvedValue)} years"
+            formatInvestmentDuration(result.solvedValue, locale)
         else -> currencyFormat.format(result.solvedValue)
     }
 
@@ -135,6 +137,19 @@ fun ResultSummaryCard(
             }
         }
     }
+}
+
+internal fun formatInvestmentDuration(durationYears: Double, locale: Locale): String {
+    val wholeMonths = (durationYears * 12).toInt()
+    // A month is longer than 30 days under the calculator's duration convention.
+    val days = (0..30).firstOrNull { durationInYears(wholeMonths.toDouble(), it.toDouble()) >= durationYears }
+    val totalMonths = if (days == null) wholeMonths + 1 else wholeMonths
+    val numberFormat = NumberFormat.getIntegerInstance(locale)
+
+    val yearsLabel = numberFormat.format(totalMonths / 12)
+    val monthsLabel = numberFormat.format(totalMonths % 12)
+    val daysLabel = numberFormat.format(days ?: 0)
+    return "${yearsLabel}y ${monthsLabel}m ${daysLabel}d"
 }
 
 @Composable
