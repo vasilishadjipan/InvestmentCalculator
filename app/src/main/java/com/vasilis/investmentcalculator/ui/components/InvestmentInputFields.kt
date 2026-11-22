@@ -152,7 +152,8 @@ fun InvestmentInputFields(
                     onValueChange = onReturnRatePercentChange,
                     suffix = " %",
                     minValue = InvestmentCalculator.MIN_RETURN,
-                    maxValue = InvestmentCalculator.MAX_RETURN
+                    maxValue = InvestmentCalculator.MAX_RETURN,
+                    keyboardType = KeyboardType.DecimalSigned
                 )
             }
 
@@ -306,6 +307,7 @@ private fun NumberInputField(
     minValue: Double = 0.0,
     maxValue: Double = InvestmentCalculator.MAX_AMOUNT,
     integerOnly: Boolean = false,
+    keyboardType: KeyboardType = if (integerOnly) KeyboardType.Number else KeyboardType.Decimal,
     modifier: Modifier = Modifier
 ) {
     val error = InvestmentInputValidation.error(value, minValue, maxValue)
@@ -328,9 +330,7 @@ private fun NumberInputField(
         } else null,
         prefix = prefix?.let { { Text(it) } },
         suffix = suffix?.let { { Text(it) } },
-        keyboardOptions = KeyboardOptions(
-            keyboardType = if (integerOnly) KeyboardType.Number else KeyboardType.Decimal
-        ),
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         singleLine = true,
         modifier = modifier.fillMaxWidth()
     )

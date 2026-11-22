@@ -72,7 +72,8 @@ data class InvestmentResult(
     val returnRatePercent: Double,
     val additionalContribution: Double,
     val schedule: List<AnnualScheduleItem>,
-    val contributionFrequency: ContributionFrequency = ContributionFrequency.MONTHLY
+    val contributionFrequency: ContributionFrequency = ContributionFrequency.MONTHLY,
+    val targetReachedAtBeginningDepositMonth: Int? = null
 )
 
 object InvestmentCalculator {
@@ -87,6 +88,7 @@ object InvestmentCalculator {
     fun calculate(input: InvestmentInput, locale: Locale = Locale.getDefault()): InvestmentResult {
         validate(input)
         var resolved = input
+        var targetReachedAtBeginningDepositMonth: Int? = null
         val solved: Double
         val label: String
         val unit: String
@@ -131,13 +133,15 @@ object InvestmentCalculator {
                 unit = "%"
             }
             CalculationMode.INVEST_LENGTH -> {
-                solved = solveDuration(input)
+                val duration = solveDuration(input)
+                solved = duration.years
+                targetReachedAtBeginningDepositMonth = duration.beginningDepositMonth
                 resolved = input.copy(investLengthYears = solved)
                 label = "Investment Duration Required"
                 unit = "Years"
             }
         }
-        val sim = simulate(resolved)
+        val sim = simulate(resolved, includeBeginningDepositAtEnd = targetReachedAtBeginningDepositMonth != null)
         require(sim.endBalance <= 1e18 && sim.totalContributions <= 1e18 &&
                 abs(sim.totalInterest) <= 1e18) {
             "The result is too large to display. Reduce the rate, duration or amounts."
@@ -145,7 +149,8 @@ object InvestmentCalculator {
         return InvestmentResult(input.mode, solved, label, unit, sim.endBalance,
             resolved.startingAmount, sim.totalContributions, sim.totalInterest,
             resolved.investLengthYears, resolved.returnRatePercent,
-            resolved.additionalContribution, sim.schedule, input.contributionFrequency)
+            resolved.additionalContribution, sim.schedule, input.contributionFrequency,
+            targetReachedAtBeginningDepositMonth)
     }
 
     private fun checkSolvedAmount(value: Double) {
@@ -189,7 +194,7 @@ object InvestmentCalculator {
         val schedule: List<AnnualScheduleItem>
     )
 
-    private fun simulate(input: InvestmentInput): SimulationResult {
+    private fun simulate(input: InvestmentInput, includeBeginningDepositAtEnd: Boolean = false): SimulationResult {
         val rate = periodicRate(input)
         val nc = input.contributionFrequency.periodsPerYear
         // No rounding up: an end-of-period payment must never arrive early.
@@ -240,6 +245,9 @@ object InvestmentCalculator {
             if (input.contributionTiming == ContributionTiming.BEGINNING) deposit()
             accrue(remainder)
             pending = true
+        } else if (includeBeginningDepositAtEnd) {
+            deposit()
+            pending = true
         }
         if (pending) recordYear()
         return SimulationResult(balance, contributions, interest, schedule)
@@ -267,9 +275,11 @@ object InvestmentCalculator {
         return high
     }
 
-    private fun solveDuration(input: InvestmentInput): Double {
+    private data class DurationSolution(val years: Double, val beginningDepositMonth: Int? = null)
+
+    private fun solveDuration(input: InvestmentInput): DurationSolution {
         // Duration means the earliest time the balance reaches AT LEAST the target.
-        if (input.startingAmount >= input.targetEndAmount) return 0.0
+        if (input.startingAmount >= input.targetEndAmount) return DurationSolution(0.0)
         val nc = input.contributionFrequency.periodsPerYear
         val rate = periodicRate(input)
         var balance = input.startingAmount
@@ -280,20 +290,28 @@ object InvestmentCalculator {
             if (input.contributionTiming == ContributionTiming.BEGINNING) {
                 balance += contribution
                 if (balance >= target) {
+                    if (rate < 0.0) {
+                        // At a loss, even a tiny delay can put the balance below the target.
+                        return DurationSolution(startTime, beginningDepositMonth = period * (12 / nc))
+                    }
                     // simulate(0) intentionally has no deposits. Choose the first representable
                     // time inside this period, so simulation includes its beginning deposit.
                     var time = Math.nextUp(startTime)
                     while (time * nc <= period.toDouble()) time = Math.nextUp(time)
-                    if (simulate(input.copy(investLengthYears = time)).endBalance >= target) return time
+                    if (simulate(input.copy(investLengthYears = time)).endBalance >= target) {
+                        return DurationSolution(time)
+                    }
                 }
             }
-            val afterInterest = balance * (1.0 + rate)
+            val afterInterest = balance + balance * rate
             if (rate > 0.0 && balance > 0.0 && afterInterest >= target) {
                 val fraction = (ln(target / balance) / ln(1.0 + rate)).coerceIn(0.0, 1.0)
                 var time = (period + fraction) / nc
                 // Round toward a reached target, never return the unsuccessful side.
                 repeat(8) {
-                    if (simulate(input.copy(investLengthYears = time)).endBalance >= target) return time
+                    if (simulate(input.copy(investLengthYears = time)).endBalance >= target) {
+                        return DurationSolution(time)
+                    }
                     time = Math.nextUp(time)
                 }
             }
@@ -303,7 +321,7 @@ object InvestmentCalculator {
                 if (balance >= target) {
                     var time = (period + 1.0) / nc
                     while (time * nc < period + 1.0) time = Math.nextUp(time)
-                    return time
+                    return DurationSolution(time)
                 }
             }
         }

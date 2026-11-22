@@ -1,16 +1,48 @@
 package com.vasilis.investmentcalculator
 
 import com.vasilis.investmentcalculator.ui.components.formatInvestmentDuration
+import com.vasilis.investmentcalculator.ui.components.formatRequiredDuration
 import java.util.Locale
 import org.junit.Assert.*
 import org.junit.Test
 
 class InvestmentDurationTest {
+    @Test fun negativeReturnCanReachTargetExactlyAtLaterBeginningDeposit() {
+        val input = InvestmentInput(mode = CalculationMode.INVEST_LENGTH,
+            targetEndAmount = 300.0, startingAmount = 0.0, returnRatePercent = -50.0,
+            additionalContribution = 200.0, contributionTiming = ContributionTiming.BEGINNING,
+            contributionFrequency = ContributionFrequency.ANNUALLY)
+
+        val result = InvestmentCalculator.calculate(input)
+
+        assertEquals(1.0, result.solvedValue, 0.0)
+        assertEquals(300.0, result.endBalance, 0.0)
+        assertEquals(400.0, result.totalContributions, 0.0)
+        assertEquals("1y 0m 0d · after deposit", formatRequiredDuration(result, Locale.US))
+    }
+
+    @Test fun negativeReturnShowsWhenBeginningDepositReachesTarget() {
+        val input = InvestmentInput(mode = CalculationMode.INVEST_LENGTH,
+            targetEndAmount = 200.0, startingAmount = 0.0, returnRatePercent = -10.0,
+            additionalContribution = 200.0, contributionTiming = ContributionTiming.BEGINNING)
+        val firstDeposit = InvestmentCalculator.calculate(input)
+        assertEquals(200.0, firstDeposit.endBalance, 0.0)
+        assertEquals("0y 0m 0d · after deposit", formatRequiredDuration(firstDeposit, Locale.US))
+        val oneDay = InvestmentCalculator.calculate(input.copy(mode = CalculationMode.END_AMOUNT,
+            investLengthYears = durationInYears(0.0, 1.0)))
+        assertTrue(oneDay.endBalance < input.targetEndAmount)
+
+        val secondDeposit = InvestmentCalculator.calculate(input.copy(targetEndAmount = 300.0))
+        assertEquals("0y 1m 0d · after deposit", formatRequiredDuration(secondDeposit, Locale.US))
+        val alreadyReached = InvestmentCalculator.calculate(input.copy(startingAmount = 200.0))
+        assertEquals("0y 0m 0d", formatRequiredDuration(alreadyReached, Locale.US))
+    }
+
     @Test fun requiredDurationDisplaysYearsMonthsAndDays() {
         val result = InvestmentCalculator.calculate(InvestmentInput(
             mode = CalculationMode.INVEST_LENGTH, targetEndAmount = 200.0, startingAmount = 0.0,
             returnRatePercent = 0.0, additionalContribution = 200.0))
-        assertEquals("0y 1m 0d", formatInvestmentDuration(result.solvedValue, Locale.US))
+        assertEquals("0y 1m 0d", formatRequiredDuration(result, Locale.US))
         assertEquals("1y 2m 3d", formatInvestmentDuration(durationInYears(14.0, 3.0), Locale.US))
         assertEquals("0y 0m 1d", formatInvestmentDuration(0.5 / 365.0, Locale.US))
         assertEquals("1y 0m 0d", formatInvestmentDuration(Math.nextDown(1.0), Locale.US))

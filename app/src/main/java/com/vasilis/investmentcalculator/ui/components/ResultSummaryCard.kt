@@ -48,7 +48,7 @@ fun ResultSummaryCard(
         com.vasilis.investmentcalculator.CalculationMode.RETURN_RATE ->
             "${numberFormat.format(result.solvedValue)}%"
         com.vasilis.investmentcalculator.CalculationMode.INVEST_LENGTH ->
-            formatInvestmentDuration(result.solvedValue, locale)
+            formatRequiredDuration(result, locale)
         else -> currencyFormat.format(result.solvedValue)
     }
 
@@ -137,6 +137,15 @@ fun ResultSummaryCard(
             }
         }
     }
+}
+
+internal fun formatRequiredDuration(result: InvestmentResult, locale: Locale): String {
+    val depositMonth = result.targetReachedAtBeginningDepositMonth
+    if (depositMonth != null) {
+        val duration = formatInvestmentDuration(durationInYears(depositMonth.toDouble(), 0.0), locale)
+        return "$duration · after deposit"
+    }
+    return formatInvestmentDuration(result.solvedValue, locale)
 }
 
 internal fun formatInvestmentDuration(durationYears: Double, locale: Locale): String {
