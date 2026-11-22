@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -134,7 +135,7 @@ fun InvestmentInputFields(
                             modifier = Modifier.weight(1f)
                         )
                     }
-                    InvestmentInputValidation.durationTotalError(inputState)?.let {
+                    InvestmentInputValidation.durationTotalError(inputState, LocalLocale.current.platformLocale)?.let {
                         Text(
                             text = it,
                             style = MaterialTheme.typography.bodySmall,
@@ -310,14 +311,13 @@ private fun NumberInputField(
     keyboardType: KeyboardType = if (integerOnly) KeyboardType.Number else KeyboardType.Decimal,
     modifier: Modifier = Modifier
 ) {
-    val error = InvestmentInputValidation.error(value, minValue, maxValue)
+    val error = InvestmentInputValidation.error(value, minValue, maxValue,
+        locale = LocalLocale.current.platformLocale, wholeNumber = integerOnly)
     val isError = error != null
 
     OutlinedTextField(
         value = value,
-        onValueChange = { text ->
-            if (!integerOnly || text.all { it in '0'..'9' }) onValueChange(text)
-        },
+        onValueChange = onValueChange,
         label = { Text(label) },
         isError = isError,
         supportingText = if (isError) {

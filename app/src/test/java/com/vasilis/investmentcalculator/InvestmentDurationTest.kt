@@ -7,6 +7,36 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class InvestmentDurationTest {
+    @Test fun localeChangeKeepsResultWhenCalculationInputsAreUnchanged() {
+        val input = InvestmentInput(startingAmount = 1000.5, targetEndAmount = 0.0)
+        val result = InvestmentCalculator.calculate(input, Locale.US)
+        val state = InvestmentUiState(input = input, result = result, hasCalculated = true,
+            inputState = InvestmentInputState(startingAmountStr = "1000.50", targetEndAmountStr = "1,000"))
+
+        val changed = state.withInputLocale(Locale.US, Locale.forLanguageTag("el-GR"))
+
+        assertEquals("1000,50", changed.inputState.startingAmountStr)
+        assertEquals(1000.5, changed.input.startingAmount, 0.0)
+        assertTrue(changed.hasCalculated)
+        assertSame(result, changed.result)
+    }
+
+    @Test fun localeChangePreservesValidInputsAndRevalidatesOtherDrafts() {
+        val viewModel = InvestmentViewModel()
+        viewModel.updateLocale(Locale.US)
+        viewModel.updateStartingAmount("1,000")
+        viewModel.updateReturnRatePercent("-7.5")
+        assertFalse(viewModel.uiState.value.isFormValid)
+
+        viewModel.updateLocale(Locale.forLanguageTag("el-GR"))
+        val changed = viewModel.uiState.value
+        assertEquals("1,000", changed.inputState.startingAmountStr)
+        assertEquals("-7,5", changed.inputState.returnRateStr)
+        assertEquals(-7.5, changed.input.returnRatePercent, 0.0)
+        assertTrue(changed.isFormValid)
+        assertEquals(1.0, changed.input.startingAmount, 0.0)
+    }
+
     @Test fun negativeReturnCanReachTargetExactlyAtLaterBeginningDeposit() {
         val input = InvestmentInput(mode = CalculationMode.INVEST_LENGTH,
             targetEndAmount = 300.0, startingAmount = 0.0, returnRatePercent = -50.0,
@@ -65,7 +95,7 @@ class InvestmentDurationTest {
         assertEquals("Enter a value between 0 and 100",
             InvestmentInputValidation.error("101", max = 100.0))
         assertEquals("Enter a value between -2.5 and 7.5",
-            InvestmentInputValidation.error("8", min = -2.5, max = 7.50))
+            InvestmentInputValidation.error("8", min = -2.5, max = 7.50, locale = Locale.US))
         assertEquals("Enter a value between 0 and 1000000000000",
             InvestmentInputValidation.error("1000000000001"))
     }
@@ -80,13 +110,31 @@ class InvestmentDurationTest {
     }
 
     @Test fun sharedValidationPreservesDecimalInputs() {
-        assertNull(InvestmentInputValidation.error("7.5"))
-        assertNull(InvestmentInputValidation.error("7,5"))
-        assertNull(InvestmentInputValidation.error("-2.5", min = -90.0))
+        assertNull(InvestmentInputValidation.error("7.5", locale = Locale.US))
+        assertNull(InvestmentInputValidation.error("7,5", locale = Locale.GERMANY))
+        assertNull(InvestmentInputValidation.error("-2.5", min = -90.0, locale = Locale.US))
+        assertNull(InvestmentInputValidation.error("\u22127.5", min = -90.0, locale = Locale.US))
+        assertEquals(-7.5, InvestmentInputValidation.parse("\u22127,5", Locale.GERMANY)!!, 0.0)
+        assertNotNull(InvestmentInputValidation.error("\u221291", min = -90.0, locale = Locale.US))
         assertEquals("Enter a whole number",
-            InvestmentInputValidation.durationError(InvestmentInputState(investLengthStr = "7.5")))
+            InvestmentInputValidation.durationError(InvestmentInputState(investLengthStr = "7.5"), Locale.US))
         assertEquals("Field cannot be empty",
             InvestmentInputValidation.error(""))
+    }
+
+    @Test fun inputUsesLocaleDecimalSeparatorAndRejectsGrouping() {
+        assertEquals(1000.5, InvestmentInputValidation.parse("1000.50", Locale.US)!!, 0.0)
+        assertEquals(1000.5, InvestmentInputValidation.parse("1000,50", Locale.GERMANY)!!, 0.0)
+        assertNull(InvestmentInputValidation.parse("1,000", Locale.US))
+        assertNull(InvestmentInputValidation.parse("1.000", Locale.GERMANY))
+        assertNull(InvestmentInputValidation.parse("1\u202f000,50", Locale.FRANCE))
+        assertNull(InvestmentInputValidation.parse("1e3", Locale.US))
+        assertEquals(7.5, InvestmentInputValidation.parse("٧٫٥", Locale.forLanguageTag("ar-EG"))!!, 0.0)
+        assertEquals("Enter a number without thousands separators (for example 1000,5)",
+            InvestmentInputValidation.error("1.000", locale = Locale.GERMANY))
+        val state = InvestmentInputState(startingAmountStr = "1,000")
+        assertFalse(InvestmentInputValidation.isValid(CalculationMode.END_AMOUNT, state, Locale.US))
+        assertTrue(InvestmentInputValidation.isValid(CalculationMode.END_AMOUNT, state, Locale.GERMANY))
     }
 
     @Test fun combinesYearsMonthsAndDays() {

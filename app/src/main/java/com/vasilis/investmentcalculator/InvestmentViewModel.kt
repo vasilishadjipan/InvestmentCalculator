@@ -7,6 +7,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
+import java.text.DecimalFormatSymbols
+import java.text.NumberFormat
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -37,55 +39,75 @@ data class InvestmentUiState(
     val calculationId: Int = 0
 )
 
-/** A comma is accepted as a decimal separator; grouping separators are not accepted. */
+/** Uses the locale's decimal separator and accepts ungrouped numbers only. */
 object InvestmentInputValidation {
-    fun durationYears(state: InvestmentInputState): Double {
-        val years = parse(state.investLengthStr) ?: 0.0
-        val months = parse(state.investLengthMonthsStr) ?: 0.0
-        val days = parse(state.investLengthDaysStr) ?: 0.0
+    private val decimalNumber = Regex("[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)")
+
+    fun durationYears(state: InvestmentInputState, locale: Locale = Locale.getDefault()): Double {
+        val years = parse(state.investLengthStr, locale) ?: 0.0
+        val months = parse(state.investLengthMonthsStr, locale) ?: 0.0
+        val days = parse(state.investLengthDaysStr, locale) ?: 0.0
         // Use a common denominator so equivalent durations round to the same value.
         return durationInYears(years * 12.0 + months, days)
     }
 
-    private fun durationFieldsError(state: InvestmentInputState): String? {
+    private fun durationFieldsError(state: InvestmentInputState, locale: Locale): String? {
         for ((value, max) in listOf(state.investLengthStr to InvestmentCalculator.MAX_YEARS,
             state.investLengthMonthsStr to InvestmentCalculator.MAX_YEARS * 12,
             state.investLengthDaysStr to InvestmentCalculator.MAX_YEARS * 365)) {
-            error(value, max = max)?.let { return it }
-            if (value.any { it !in '0'..'9' }) return "Enter a whole number"
+            error(value, max = max, locale = locale, wholeNumber = true)?.let { return it }
         }
         return null
     }
 
-    fun durationError(state: InvestmentInputState): String? =
-        durationFieldsError(state) ?: durationTotalError(state)
+    fun durationError(state: InvestmentInputState, locale: Locale = Locale.getDefault()): String? =
+        durationFieldsError(state, locale) ?: durationTotalError(state, locale)
 
-    fun durationTotalError(state: InvestmentInputState): String? {
-        if (durationFieldsError(state) != null) return null
-        return if (durationYears(state) > InvestmentCalculator.MAX_YEARS)
+    fun durationTotalError(state: InvestmentInputState, locale: Locale = Locale.getDefault()): String? {
+        if (durationFieldsError(state, locale) != null) return null
+        return if (durationYears(state, locale) > InvestmentCalculator.MAX_YEARS)
             "Total investment length cannot exceed ${java.math.BigDecimal.valueOf(InvestmentCalculator.MAX_YEARS).stripTrailingZeros().toPlainString()} years" else null
     }
 
-    fun parse(text: String): Double? = text.trim().replace(',', '.').toDoubleOrNull()
-        ?.takeIf { it.isFinite() }
-
-    fun error(text: String, min: Double = 0.0,
-              max: Double = InvestmentCalculator.MAX_AMOUNT): String? {
-        if (text.isBlank()) return "Field cannot be empty"
-        val minLabel = java.math.BigDecimal.valueOf(min).stripTrailingZeros().toPlainString()
-        val maxLabel = java.math.BigDecimal.valueOf(max).stripTrailingZeros().toPlainString()
-        val rangeError = "Enter a value between $minLabel and $maxLabel"
-        val value = parse(text) ?: return "Enter a valid number (for example 7.5 or 7,5)"
-        return if (value !in min..max) rangeError else null
+    fun parse(text: String, locale: Locale = Locale.getDefault()): Double? {
+        val symbols = DecimalFormatSymbols.getInstance(locale)
+        val normalized = buildString {
+            for (character in text.trim()) {
+                append(when (character) {
+                    symbols.decimalSeparator -> '.'
+                    '-', '\u2212', symbols.minusSign -> '-'
+                    '+' -> '+'
+                    else -> character.digitToIntOrNull() ?: return null
+                })
+            }
+        }
+        if (!decimalNumber.matches(normalized)) return null
+        return normalized.toDoubleOrNull()?.takeIf { it.isFinite() }
     }
 
-    fun isValid(mode: CalculationMode, state: InvestmentInputState): Boolean =
-        (mode == CalculationMode.END_AMOUNT || error(state.targetEndAmountStr) == null) &&
-                (mode == CalculationMode.STARTING_AMOUNT || error(state.startingAmountStr) == null) &&
-                (mode == CalculationMode.INVEST_LENGTH || durationError(state) == null) &&
+    fun error(text: String, min: Double = 0.0,
+              max: Double = InvestmentCalculator.MAX_AMOUNT,
+              locale: Locale = Locale.getDefault(), wholeNumber: Boolean = false): String? {
+        if (text.isBlank()) return "Field cannot be empty"
+        val value = parse(text, locale)
+        if (wholeNumber && (value == null || (value in min..max && text.any { it.digitToIntOrNull() == null })))
+            return "Enter a whole number"
+        if (value != null && value in min..max) return null
+        val format = NumberFormat.getNumberInstance(locale).apply {
+            isGroupingUsed = false
+            maximumFractionDigits = 340
+        }
+        return if (value == null) "Enter a number without thousands separators (for example ${format.format(1000.5)})"
+        else "Enter a value between ${format.format(min)} and ${format.format(max)}"
+    }
+
+    fun isValid(mode: CalculationMode, state: InvestmentInputState, locale: Locale = Locale.getDefault()): Boolean =
+        (mode == CalculationMode.END_AMOUNT || error(state.targetEndAmountStr, locale = locale) == null) &&
+                (mode == CalculationMode.STARTING_AMOUNT || error(state.startingAmountStr, locale = locale) == null) &&
+                (mode == CalculationMode.INVEST_LENGTH || durationError(state, locale) == null) &&
                 (mode == CalculationMode.RETURN_RATE || error(state.returnRateStr,
-                    InvestmentCalculator.MIN_RETURN, InvestmentCalculator.MAX_RETURN) == null) &&
-                (mode == CalculationMode.CONTRIBUTE_AMOUNT || error(state.additionalContributionStr) == null)
+                    InvestmentCalculator.MIN_RETURN, InvestmentCalculator.MAX_RETURN, locale) == null) &&
+                (mode == CalculationMode.CONTRIBUTE_AMOUNT || error(state.additionalContributionStr, locale = locale) == null)
 }
 
 class InvestmentViewModel : ViewModel() {
@@ -95,16 +117,22 @@ class InvestmentViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(InvestmentUiState())
     val uiState: StateFlow<InvestmentUiState> = _uiState.asStateFlow()
 
-    fun updateLocale(locale: Locale) { currentLocale = locale }
+    fun updateLocale(locale: Locale) {
+        if (locale == currentLocale) return
+        val previous = _uiState.value
+        val updated = previous.withInputLocale(currentLocale, locale)
+        currentLocale = locale
+        if (previous.isCalculating && !updated.isCalculating) {
+            calculationJob?.cancel()
+            revision++
+        }
+        _uiState.value = updated
+    }
 
     private fun edit(transform: (InvestmentUiState) -> InvestmentUiState) {
         calculationJob?.cancel()
         revision++
-        _uiState.update { old ->
-            val next = transform(old)
-            next.copy(hasCalculated = false, isCalculating = false, calculationError = null,
-                isFormValid = InvestmentInputValidation.isValid(next.input.mode, next.inputState))
-        }
+        _uiState.update { transform(it).parseInputs(currentLocale).clearCalculation() }
     }
 
     fun updateMode(mode: CalculationMode) {
@@ -112,28 +140,22 @@ class InvestmentViewModel : ViewModel() {
         edit { it.copy(input = it.input.copy(mode = mode)) }
     }
     fun updateTargetEndAmount(text: String) = edit {
-        it.copy(inputState = it.inputState.copy(targetEndAmountStr = text),
-            input = it.input.copy(targetEndAmount = InvestmentInputValidation.parse(text) ?: 0.0))
+        it.copy(inputState = it.inputState.copy(targetEndAmountStr = text))
     }
     fun updateStartingAmount(text: String) = edit {
-        it.copy(inputState = it.inputState.copy(startingAmountStr = text),
-            input = it.input.copy(startingAmount = InvestmentInputValidation.parse(text) ?: 0.0))
+        it.copy(inputState = it.inputState.copy(startingAmountStr = text))
     }
     private fun updateDuration(transform: (InvestmentInputState) -> InvestmentInputState) = edit {
-        val state = transform(it.inputState)
-        it.copy(inputState = state,
-            input = it.input.copy(investLengthYears = InvestmentInputValidation.durationYears(state)))
+        it.copy(inputState = transform(it.inputState))
     }
     fun updateInvestLengthYears(text: String) = updateDuration { it.copy(investLengthStr = text) }
     fun updateInvestLengthMonths(text: String) = updateDuration { it.copy(investLengthMonthsStr = text) }
     fun updateInvestLengthDays(text: String) = updateDuration { it.copy(investLengthDaysStr = text) }
     fun updateReturnRatePercent(text: String) = edit {
-        it.copy(inputState = it.inputState.copy(returnRateStr = text),
-            input = it.input.copy(returnRatePercent = InvestmentInputValidation.parse(text) ?: 0.0))
+        it.copy(inputState = it.inputState.copy(returnRateStr = text))
     }
     fun updateAdditionalContribution(text: String) = edit {
-        it.copy(inputState = it.inputState.copy(additionalContributionStr = text),
-            input = it.input.copy(additionalContribution = InvestmentInputValidation.parse(text) ?: 0.0))
+        it.copy(inputState = it.inputState.copy(additionalContributionStr = text))
     }
     fun updateContributionFrequency(value: ContributionFrequency) = edit {
         it.copy(input = it.input.copy(contributionFrequency = value))
@@ -177,3 +199,42 @@ class InvestmentViewModel : ViewModel() {
             calculationId = it.calculationId) }
     }
 }
+
+internal fun InvestmentUiState.withInputLocale(previousLocale: Locale, locale: Locale): InvestmentUiState {
+    val previousSeparator = DecimalFormatSymbols.getInstance(previousLocale).decimalSeparator
+    val separator = DecimalFormatSymbols.getInstance(locale).decimalSeparator
+    fun convert(text: String): String =
+        if (InvestmentInputValidation.parse(text, previousLocale) != null) text.replace(previousSeparator, separator)
+        else text
+
+    val updated = copy(inputState = inputState.copy(
+        targetEndAmountStr = convert(inputState.targetEndAmountStr),
+        startingAmountStr = convert(inputState.startingAmountStr),
+        returnRateStr = convert(inputState.returnRateStr),
+        additionalContributionStr = convert(inputState.additionalContributionStr)
+    )).parseInputs(locale)
+
+    // The value solved by the active mode is ignored by the calculator.
+    val previousInputs = when (input.mode) {
+        CalculationMode.END_AMOUNT -> input.copy(targetEndAmount = updated.input.targetEndAmount)
+        CalculationMode.STARTING_AMOUNT -> input.copy(startingAmount = updated.input.startingAmount)
+        CalculationMode.RETURN_RATE -> input.copy(returnRatePercent = updated.input.returnRatePercent)
+        CalculationMode.INVEST_LENGTH -> input.copy(investLengthYears = updated.input.investLengthYears)
+        CalculationMode.CONTRIBUTE_AMOUNT -> input.copy(additionalContribution = updated.input.additionalContribution)
+    }
+    return if (updated.isFormValid && updated.input == previousInputs) updated else updated.clearCalculation()
+}
+
+private fun InvestmentUiState.parseInputs(locale: Locale): InvestmentUiState = copy(
+    input = input.copy(
+        targetEndAmount = InvestmentInputValidation.parse(inputState.targetEndAmountStr, locale) ?: 0.0,
+        startingAmount = InvestmentInputValidation.parse(inputState.startingAmountStr, locale) ?: 0.0,
+        investLengthYears = InvestmentInputValidation.durationYears(inputState, locale),
+        returnRatePercent = InvestmentInputValidation.parse(inputState.returnRateStr, locale) ?: 0.0,
+        additionalContribution = InvestmentInputValidation.parse(inputState.additionalContributionStr, locale) ?: 0.0
+    ),
+    isFormValid = InvestmentInputValidation.isValid(input.mode, inputState, locale)
+)
+
+private fun InvestmentUiState.clearCalculation(): InvestmentUiState =
+    copy(hasCalculated = false, isCalculating = false, calculationError = null)
