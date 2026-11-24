@@ -17,7 +17,7 @@ fun AdBanner(
     val adUnitId = if (BuildConfig.DEBUG) {
         "ca-app-pub-3940256099942544/6300978111" // Google Test Banner Ad Unit ID
     } else {
-        "ca-app-pub-3707930885555910/1093246857" // Your Real Live Banner Ad Unit ID
+        "ca-app-pub-3707930885555910/2752672218" // Your Real Live Banner Ad Unit ID
     }
 
     AndroidView(

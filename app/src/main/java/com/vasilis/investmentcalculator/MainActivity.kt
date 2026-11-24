@@ -37,7 +37,7 @@ class MainActivity : ComponentActivity() {
 
         // Your real App Open ad unit ID.
         private const val RELEASE_AD_UNIT_ID =
-            "ca-app-pub-3707930885555910/2061274208"
+            "ca-app-pub-3707930885555910/9364900764"
 
         // App Open ads expire after 4 hours.
         private const val AD_EXPIRY_MS = 4 * 60 * 60 * 1000L
